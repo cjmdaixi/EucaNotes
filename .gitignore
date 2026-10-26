@@ -1,0 +1,4 @@
+.ios-build/
+artifacts/
+.DS_Store
+xcuserdata/

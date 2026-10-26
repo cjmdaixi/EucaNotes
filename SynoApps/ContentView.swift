@@ -1,17 +1,21 @@
 import SwiftUI
-import Playgrounds
 
 struct ContentView: View {
+    @Environment(LibraryStore.self) private var store
+
     var body: some View {
-        Text("Hello, world!")
-            .padding()
+        Group {
+            if store.isAuthenticated {
+                LibraryView()
+            } else {
+                LoginView()
+            }
+        }
+        .animation(.easeInOut(duration: 0.22), value: store.isAuthenticated)
     }
 }
 
 #Preview {
     ContentView()
-}
-
-#Playground {
-    _ = 1 + 2
+        .environment(LibraryStore())
 }
