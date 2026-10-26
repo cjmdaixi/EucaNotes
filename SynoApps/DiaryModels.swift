@@ -49,15 +49,22 @@ enum DiaryText {
         } else {
             source = html
         }
-        guard let img = source.range(of: "<img[^>]+>", options: .regularExpression),
-              let src = source[img].range(of: "src\\s*=\\s*([\"'])(.*?)\\1", options: .regularExpression),
-              let quoteStart = source[src].first(where: { $0 == "\"" || $0 == "'" }) else { return nil }
-        let value = source[src].drop(while: { $0 != quoteStart }).dropFirst()
-        guard let end = value.firstIndex(of: quoteStart) else { return nil }
-        return String(value[..<end])
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let expression = try? NSRegularExpression(pattern: "<img[^>]+>")
+        let matches = expression?.matches(in: source, range: NSRange(source.startIndex..., in: source)) ?? []
+        for match in matches {
+            guard let img = Range(match.range, in: source) else { continue }
+            let tag = source[img]
+            guard let src = tag.range(of: "src\\s*=\\s*([\"'])(.*?)\\1", options: .regularExpression),
+                  let quoteStart = tag[src].first(where: { $0 == "\"" || $0 == "'" }) else { continue }
+            let value = tag[src].drop(while: { $0 != quoteStart }).dropFirst()
+            guard let end = value.firstIndex(of: quoteStart) else { continue }
+            let result = String(value[..<end])
+                .replacingOccurrences(of: "&amp;", with: "&")
+                .replacingOccurrences(of: "&quot;", with: "\"")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !result.isEmpty { return result }
+        }
+        return nil
     }
 }
 

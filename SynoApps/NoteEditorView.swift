@@ -12,6 +12,8 @@ struct NoteEditorView: View {
     @State private var showInfo = false
     @State private var showLink = false
     @State private var showFormatPanel = false
+    @State private var showDiaryMetadata = false
+    @State private var diaryMetadataSection: DiaryMetadataSection = .mood
     @State private var linkURL = "https://"
 
     var body: some View {
@@ -27,14 +29,25 @@ struct NoteEditorView: View {
         .background(AppTheme.paper)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if diaryMode, let note = store.note(id: noteID) {
+                ToolbarItem(placement: .principal) {
+                    Text(diaryDateTitle(note))
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .overlay(Capsule().stroke(Color.secondary.opacity(0.25)))
+                }
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 HStack(spacing: 0) {
-                    Button { showInfo = true } label: {
-                        Image(systemName: "info.circle")
-                            .font(.title3)
-                            .frame(width: 42, height: 42)
+                    if !diaryMode {
+                        Button { showInfo = true } label: {
+                            Image(systemName: "info.circle")
+                                .font(.title3)
+                                .frame(width: 42, height: 42)
+                        }
+                        .accessibilityLabel("笔记信息")
                     }
-                    .accessibilityLabel("笔记信息")
                     Menu {
                         Label(store.syncState.title, systemImage: "checkmark.icloud")
                             .disabled(true)
@@ -58,6 +71,20 @@ struct NoteEditorView: View {
                             .frame(width: 42, height: 42)
                     }
                     .accessibilityLabel("更多操作")
+                    if diaryMode {
+                        Button {
+                            Task {
+                                await store.saveNote(id: noteID)
+                                dismiss()
+                            }
+                        } label: {
+                            Image(systemName: "checkmark")
+                                .font(.title3.weight(.medium))
+                                .frame(width: 42, height: 42)
+                        }
+                        .accessibilityLabel("完成日记")
+                        .accessibilityIdentifier("save-diary-button")
+                    }
                 }
                 .background(.regularMaterial, in: Capsule())
             }
@@ -73,6 +100,9 @@ struct NoteEditorView: View {
         }
         .sheet(isPresented: $showInfo) {
             if let note = store.note(id: noteID) { NoteInfoView(note: note, diaryMode: diaryMode) }
+        }
+        .sheet(isPresented: $showDiaryMetadata) {
+            DiaryMetadataPanel(noteID: noteID, initialSection: diaryMetadataSection)
         }
         .sheet(isPresented: $showLink) {
             NavigationStack {
@@ -97,6 +127,7 @@ struct NoteEditorView: View {
             .presentationDetents([.medium])
         }
         .task(id: noteID) {
+            if diaryMode { await store.loadNote(id: noteID) }
             title = store.note(id: noteID)?.title ?? ""
         }
         .onDisappear {
@@ -105,8 +136,9 @@ struct NoteEditorView: View {
         }
     }
 
-    private func editor(_ note: Note) -> some View {
-        VStack(spacing: 0) {
+    private func editor(_ note: Note) -> AnyView {
+        if diaryMode { return AnyView(diaryEditor(note)) }
+        return AnyView(VStack(spacing: 0) {
             Group {
                 if diaryMode {
                     Text(note.title)
@@ -154,7 +186,49 @@ struct NoteEditorView: View {
                     isExpanded: $showFormatPanel
                 )
             }
+        })
+    }
+
+    private func diaryEditor(_ note: Note) -> some View {
+        VStack(spacing: 0) {
+            DiaryPhotoHeader(note: note)
+            TextField("标题", text: Binding(
+                get: { note.diaryMetadata.headline },
+                set: { value in
+                    var metadata = note.diaryMetadata
+                    metadata.headline = value
+                    store.updateDiaryMetadata(id: noteID, metadata: metadata)
+                }
+            ), axis: .vertical)
+                .font(.title2.bold())
+                .multilineTextAlignment(.center)
+                .lineLimit(1...3)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 20)
+                .disabled(note.isInTrash)
+                .accessibilityIdentifier("diary-headline-field")
+            DiaryMetadataBar(metadata: note.diaryMetadata) { section in
+                diaryMetadataSection = section
+                showDiaryMetadata = true
+            }
+            if store.loadingNoteIDs.contains(noteID) {
+                ProgressView("正在载入日记…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                RichTextEditor(noteID: noteID, content: note.content, bridge: bridge) { html in
+                    guard html != store.note(id: noteID)?.content else { return }
+                    store.updateNote(id: noteID, content: html)
+                    scheduleSave()
+                }
+                .disabled(note.isInTrash)
+            }
         }
+    }
+
+    private func diaryDateTitle(_ note: Note) -> String {
+        guard let month = store.diaryMonth(id: note.parentID), let day = DiaryText.day(from: note.title) else { return note.title }
+        let weekday = DiaryText.weekday(for: month, note: note)
+        return "\(month.year)年\(month.month)月\(day)日（\(weekday)）"
     }
 
     private func scheduleSave() {

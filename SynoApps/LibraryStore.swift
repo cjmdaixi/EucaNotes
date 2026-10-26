@@ -31,6 +31,7 @@ final class LibraryStore {
     private var metadataEdited: Set<String> = []
     private var syncGeneration = 0
     private var diaryPreparationTask: Task<Void, Error>?
+    private var diarySaveTasks: [String: Task<Void, Never>] = [:]
 
     var isAuthenticated: Bool { session != nil }
     var isDemo: Bool { session?.isDemo == true }
@@ -129,7 +130,7 @@ final class LibraryStore {
             presentError("登录已过期，请重新登录。")
         } catch {
             syncState = .failed(error.localizedDescription)
-            if notes.isEmpty { presentError(error.localizedDescription) }
+            if notes.isEmpty || diaryMonths.isEmpty { presentError(error.localizedDescription) }
         }
     }
 
@@ -304,6 +305,72 @@ final class LibraryStore {
             syncState = .failed(error.localizedDescription)
             presentError(error.localizedDescription)
             return nil
+        }
+    }
+
+    func updateDiaryMetadata(id: String, metadata: DiaryMetadata) {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        guard let content = try? DiaryText.updatingMetadata(in: notes[index].content, metadata: metadata) else { return }
+        notes[index].content = content
+        notes[index].isPinned = metadata.favorite
+        if metadata.favorite && !notes[index].tags.contains("最喜欢的日记") {
+            notes[index].tags.append("最喜欢的日记")
+        } else if !metadata.favorite {
+            notes[index].tags.removeAll { $0 == "最喜欢的日记" }
+        }
+        notes[index].modifiedAt = .now
+        notes[index].hasLoadedContent = true
+        metadataEdited.insert(id)
+        editRevisions[id, default: 0] += 1
+        syncState = .syncing
+        scheduleDiarySave(id: id)
+    }
+
+    func updateDiaryTags(id: String, tags: [String]) {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        var updated = tags
+        if notes[index].isPinned && !updated.contains("最喜欢的日记") { updated.append("最喜欢的日记") }
+        notes[index].tags = updated
+        notes[index].modifiedAt = .now
+        metadataEdited.insert(id)
+        editRevisions[id, default: 0] += 1
+        syncState = .syncing
+        scheduleDiarySave(id: id)
+    }
+
+    private func scheduleDiarySave(id: String) {
+        diarySaveTasks[id]?.cancel()
+        diarySaveTasks[id] = Task {
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
+            await saveNote(id: id)
+        }
+    }
+
+    func addPhoto(id: String, jpegData: Data) async {
+        guard let session, let note = note(id: id) else { return }
+        syncState = .syncing
+        do {
+            if session.isDemo {
+                diaryImages[id] = jpegData
+                let source = "data:image/jpeg;base64,\(jpegData.base64EncodedString())"
+                try await Task.sleep(for: .milliseconds(200))
+                updateNote(id: id, content: note.content + "\n<p><img src=\"\(source)\"></p>")
+                editRevisions.removeValue(forKey: id)
+            } else {
+                diarySaveTasks[id]?.cancel()
+                await saveNote(id: id)
+                guard editRevisions[id] == nil, let current = self.note(id: id) else { return }
+                let saved = try await api.addPhoto(to: current, jpegData: jpegData, session: session)
+                replace(saved)
+                diaryImages.removeValue(forKey: id)
+                await loadDiaryImage(noteID: id)
+            }
+            syncState = .saved(.now)
+            persistCache()
+        } catch {
+            syncState = .failed(error.localizedDescription)
+            presentError("照片保存失败：\(error.localizedDescription)")
         }
     }
 

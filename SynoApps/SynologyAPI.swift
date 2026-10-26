@@ -158,6 +158,18 @@ struct SynologyAPI: Sendable {
         return Notebook(json: object)
     }
 
+    func attachmentDownloadURL(noteID: String, fileID: String, session: SynologySession) -> String? {
+        var components = URLComponents(string: session.baseURL + "/webapi/entry.cgi")
+        components?.queryItems = [
+            URLQueryItem(name: "api", value: "SYNO.NoteStation.Note"),
+            URLQueryItem(name: "version", value: "4"),
+            URLQueryItem(name: "method", value: "download"),
+            URLQueryItem(name: "object_id", value: noteID),
+            URLQueryItem(name: "file_id", value: fileID)
+        ]
+        return components?.string
+    }
+
     func imageData(source: String, session: SynologySession) async throws -> Data {
         if source.hasPrefix("data:image"), let comma = source.firstIndex(of: ",") {
             let encoded = String(source[source.index(after: comma)...])
@@ -180,6 +192,58 @@ struct SynologyAPI: Sendable {
             throw SynologyError.network("无法载入月卡背景照片。")
         }
         return data
+    }
+
+    func addPhoto(to note: Note, jpegData: Data, session: SynologySession) async throws -> Note {
+        let reference = Data(UUID().uuidString.utf8).base64EncodedString()
+        let fieldName = "photo_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        let embedded = "data:image/jpeg;base64," + jpegData.base64EncodedString()
+        let html = note.content + "\n<p><img ref=\"\(reference)\" src=\"\(embedded)\"></p>"
+        let fields: [String: JSONValue] = [
+            "object_id": .string(note.id),
+            "title": .string(note.title),
+            "content": .string(html),
+            "brief": .string(note.preview),
+            "commit_msg": .object(["device": .string("Euca Diary for iOS"), "listable": .bool(false)]),
+            "attachment": .array([.object(["action": .string("create"), "name": .string(fieldName), "format": .string("raw"), "ref": .string(reference), "rotate": .bool(true)])])
+        ]
+        try await multipartRequest(session: session, fields: fields, fileField: fieldName, fileData: jpegData)
+        return try await getNote(id: note.id, session: session)
+    }
+
+    private func multipartRequest(session: SynologySession, fields: [String: JSONValue], fileField: String, fileData: Data) async throws {
+        guard var components = URLComponents(string: session.baseURL + "/webapi/entry.cgi") else { throw SynologyError.invalidServer }
+        components.queryItems = [
+            URLQueryItem(name: "api", value: "SYNO.NoteStation.Note"),
+            URLQueryItem(name: "version", value: "3"),
+            URLQueryItem(name: "method", value: "set"),
+            URLQueryItem(name: "_sid", value: session.sid)
+        ]
+        guard let url = components.url else { throw SynologyError.invalidServer }
+        let boundary = "EucaDiary-" + UUID().uuidString
+        var body = Data()
+        for (name, value) in fields {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
+            let encoded = try JSONEncoder().encode(value)
+            body.append(encoded)
+            body.append(Data("\r\n".utf8))
+        }
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(fileField)\"; filename=\"photo.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".utf8))
+        body.append(fileData)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw SynologyError.network("照片上传失败，请检查网络连接。")
+        }
+        let envelope = try decoder.decode(JSONValue.self, from: data)
+        if envelope["success"]?.boolValue != true {
+            throw SynologyError.api("SYNO.NoteStation.Note", envelope["error"]?["code"]?.intValue ?? -1)
+        }
     }
 
     func createNote(title: String, notebookID: String, session: SynologySession) async throws -> Note {

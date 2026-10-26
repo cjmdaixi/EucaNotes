@@ -133,8 +133,9 @@ struct Note: Identifiable, Codable, Hashable, Sendable {
     var isEncrypted: Bool
     var hasLoadedContent: Bool
     var isPinned: Bool
+    var attachmentRefs: [String: String]
 
-    init(id: String = UUID().uuidString, title: String, content: String = "", brief: String = "", parentID: String = "", tags: [String] = [], createdAt: Date = .now, modifiedAt: Date = .now, version: String = "", isInTrash: Bool = false, isArchived: Bool = false, isEncrypted: Bool = false, hasLoadedContent: Bool = true, isPinned: Bool = false) {
+    init(id: String = UUID().uuidString, title: String, content: String = "", brief: String = "", parentID: String = "", tags: [String] = [], createdAt: Date = .now, modifiedAt: Date = .now, version: String = "", isInTrash: Bool = false, isArchived: Bool = false, isEncrypted: Bool = false, hasLoadedContent: Bool = true, isPinned: Bool = false, attachmentRefs: [String: String] = [:]) {
         self.id = id
         self.title = title
         self.content = content
@@ -149,11 +150,12 @@ struct Note: Identifiable, Codable, Hashable, Sendable {
         self.isEncrypted = isEncrypted
         self.hasLoadedContent = hasLoadedContent
         self.isPinned = isPinned
+        self.attachmentRefs = attachmentRefs
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, title, content, brief, parentID, tags, createdAt, modifiedAt, version
-        case isInTrash, isArchived, isEncrypted, hasLoadedContent, isPinned
+        case isInTrash, isArchived, isEncrypted, hasLoadedContent, isPinned, attachmentRefs
     }
 
     init(from decoder: Decoder) throws {
@@ -176,6 +178,7 @@ struct Note: Identifiable, Codable, Hashable, Sendable {
         isEncrypted = try container.decode(Bool.self, forKey: .isEncrypted)
         hasLoadedContent = try container.decode(Bool.self, forKey: .hasLoadedContent)
         isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        attachmentRefs = try container.decodeIfPresent([String: String].self, forKey: .attachmentRefs) ?? [:]
     }
 
     init(json: JSONValue) {
@@ -195,6 +198,12 @@ struct Note: Identifiable, Codable, Hashable, Sendable {
         isEncrypted = json["encrypt"]?.boolValue ?? false
         hasLoadedContent = json["content"] != nil
         isPinned = false
+        attachmentRefs = [:]
+        if case .object(let attachments) = json["attachment"] ?? .null {
+            for (fileID, attachment) in attachments {
+                if let reference = attachment["ref"]?.stringValue { attachmentRefs[reference] = fileID }
+            }
+        }
     }
 
     var displayTitle: String {

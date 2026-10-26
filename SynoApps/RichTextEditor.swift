@@ -110,7 +110,7 @@ struct RichTextEditor: UIViewRepresentable {
     private static let document = """
     <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
     <style>
-    :root { color-scheme: light dark; --paper:#fff; --ink:#262628; --muted:#8b8b90; --accent:#f2a81e; --rule:#e7e7e9; }
+    :root { color-scheme: light dark; --paper:#fff; --ink:#262628; --muted:#8b8b90; --accent:#407a63; --rule:#e7e7e9; }
     @media (prefers-color-scheme:dark) { :root { --paper:#1c1c1e; --ink:#f2f2f2; --muted:#929298; --rule:#38383a; } }
     * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
     html,body { margin:0; padding:0; background:var(--paper); }
@@ -128,15 +128,16 @@ struct RichTextEditor: UIViewRepresentable {
     .task { display:flex; gap:.65em; align-items:flex-start; margin:.45em 0; }
     .task-box { flex:0 0 auto; color:var(--accent); font-size:1.15em; line-height:1.65; cursor:pointer; user-select:none; }
     .task.done .task-text { opacity:.5; text-decoration:line-through; }
-    #editor:empty:before { content:"开始书写…"; color:var(--muted); pointer-events:none; }
+    #editor:empty:before, #editor.is-empty:before { content:"写下你的今天…"; color:var(--muted); pointer-events:none; }
     </style></head><body><div id="editor" contenteditable="true" autocapitalize="sentences"></div>
     <script>
     const editor = document.getElementById('editor');
-    function notify() { window.webkit.messageHandlers.noteChanged.postMessage({content:editor.innerHTML}); }
+    function updateEmpty() { editor.classList.toggle('is-empty', !editor.textContent.trim() && !editor.querySelector('img,video')); }
+    function notify() { updateEmpty(); window.webkit.messageHandlers.noteChanged.postMessage({content:editor.innerHTML}); }
     editor.addEventListener('input',notify);
     editor.addEventListener('keyup',()=>{});
     editor.addEventListener('click',e=>{ if(e.target.classList.contains('task-box')) { const task=e.target.parentElement; task.classList.toggle('done'); e.target.textContent=task.classList.contains('done')?'☑':'☐'; notify(); } });
-    window.synoSetContent = function(html) { editor.innerHTML=html||'<p><br></p>'; };
+    window.synoSetContent = function(html) { editor.innerHTML=html||'<p><br></p>'; updateEmpty(); };
     window.synoCommand = function(command,value) {
       editor.focus();
       const selection=window.getSelection();

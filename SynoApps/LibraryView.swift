@@ -315,12 +315,19 @@ private struct DiaryRow: View {
                 } else {
                     ZStack(alignment: .bottomLeading) {
                         LinearGradient(colors: [AppTheme.accent.opacity(0.12), AppTheme.accent.opacity(0.28)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        Text(note.preview.isEmpty ? "写下这一天…" : note.preview)
-                            .font(.system(size: 17, design: .serif))
-                            .foregroundStyle(.primary.opacity(0.75))
-                            .lineLimit(4)
-                            .multilineTextAlignment(.leading)
-                            .padding(18)
+                        VStack(alignment: .leading, spacing: 7) {
+                            if !note.diaryMetadata.headline.isEmpty {
+                                Text(note.diaryMetadata.headline)
+                                    .font(.headline)
+                                    .lineLimit(2)
+                            }
+                            Text(note.preview.isEmpty ? "写下这一天…" : note.preview)
+                                .font(.system(size: 17, design: .serif))
+                                .lineLimit(4)
+                        }
+                        .foregroundStyle(.primary.opacity(0.75))
+                        .multilineTextAlignment(.leading)
+                        .padding(18)
                     }
                 }
             }
