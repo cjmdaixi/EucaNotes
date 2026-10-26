@@ -9,6 +9,7 @@ struct NoteEditorView: View {
     @State private var confirmDelete = false
     @State private var showInfo = false
     @State private var showLink = false
+    @State private var showFormatPanel = false
     @State private var linkURL = "https://"
 
     var body: some View {
@@ -24,30 +25,39 @@ struct NoteEditorView: View {
         .background(AppTheme.paper)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                Label(store.syncState.title, systemImage: statusIcon)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .labelStyle(.titleAndIcon)
-            }
             ToolbarItemGroup(placement: .primaryAction) {
-                if let note = store.note(id: noteID), !note.isInTrash {
-                    ShareLink(item: note.displayTitle + "\n\n" + note.preview) {
-                        Image(systemName: "square.and.arrow.up")
+                HStack(spacing: 0) {
+                    Button { showInfo = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.title3)
+                            .frame(width: 42, height: 42)
                     }
-                    .accessibilityLabel("分享笔记")
+                    .accessibilityLabel("笔记信息")
+                    Menu {
+                        Label(store.syncState.title, systemImage: "checkmark.icloud")
+                            .disabled(true)
+                        if let note = store.note(id: noteID), !note.isInTrash {
+                            ShareLink(item: note.displayTitle + "\n\n" + note.preview) {
+                                Label("共享", systemImage: "square.and.arrow.up")
+                            }
+                        }
+                        if store.note(id: noteID)?.isInTrash == true {
+                            Button { Task { await store.restoreFromTrash(id: noteID) } } label: {
+                                Label("恢复笔记", systemImage: "arrow.uturn.backward")
+                            }
+                        }
+                        Divider()
+                        Button(role: .destructive) { confirmDelete = true } label: {
+                            Label(store.note(id: noteID)?.isInTrash == true ? "永久删除" : "移到废纸篓", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.title3)
+                            .frame(width: 42, height: 42)
+                    }
+                    .accessibilityLabel("更多操作")
                 }
-                Menu {
-                    Button { showInfo = true } label: { Label("笔记信息", systemImage: "info.circle") }
-                    if store.note(id: noteID)?.isInTrash == true {
-                        Button { Task { await store.restoreFromTrash(id: noteID) } } label: { Label("恢复笔记", systemImage: "arrow.uturn.backward") }
-                    }
-                    Divider()
-                    Button(role: .destructive) { confirmDelete = true } label: {
-                        Label(store.note(id: noteID)?.isInTrash == true ? "永久删除" : "移到废纸篓", systemImage: "trash")
-                    }
-                } label: { Image(systemName: "ellipsis.circle") }
-                .accessibilityLabel("更多操作")
+                .background(.regularMaterial, in: Capsule())
             }
         }
         .confirmationDialog(store.note(id: noteID)?.isInTrash == true ? "永久删除这篇笔记？此操作无法撤销。" : "将这篇笔记移到废纸篓？", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -83,8 +93,6 @@ struct NoteEditorView: View {
         }
         .task(id: noteID) {
             title = store.note(id: noteID)?.title ?? ""
-            // selectNote owns the independent request lifetime; starting another
-            // view-scoped request here can cancel it during navigation.
         }
         .onDisappear {
             saveTask?.cancel()
@@ -94,12 +102,12 @@ struct NoteEditorView: View {
 
     private func editor(_ note: Note) -> some View {
         VStack(spacing: 0) {
-            TextField("无标题", text: $title, axis: .vertical)
+            TextField("未命名新笔记", text: $title, axis: .vertical)
                 .font(.system(size: 30, weight: .bold))
                 .lineLimit(1...3)
-                .padding(.horizontal, 24)
-                .padding(.top, 14)
-                .padding(.bottom, 4)
+                .padding(.horizontal, 22)
+                .padding(.top, 12)
+                .padding(.bottom, 6)
                 .disabled(note.isInTrash)
                 .accessibilityIdentifier("note-title-field")
                 .onChange(of: title) { _, newTitle in
@@ -126,15 +134,14 @@ struct NoteEditorView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            if !note.isInTrash { FormattingBar(bridge: bridge, showLink: $showLink) }
-        }
-    }
-
-    private var statusIcon: String {
-        switch store.syncState {
-        case .idle, .saved: return "checkmark.icloud"
-        case .syncing: return "arrow.triangle.2.circlepath.icloud"
-        case .failed: return "exclamationmark.icloud"
+            if !note.isInTrash {
+                FormattingBar(
+                    bridge: bridge,
+                    showLink: $showLink,
+                    showInfo: $showInfo,
+                    isExpanded: $showFormatPanel
+                )
+            }
         }
     }
 
@@ -151,53 +158,87 @@ struct NoteEditorView: View {
 private struct FormattingBar: View {
     let bridge: RichTextEditorBridge
     @Binding var showLink: Bool
+    @Binding var showInfo: Bool
+    @Binding var isExpanded: Bool
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 7), count: 6)
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 3) {
-                Menu {
-                    Button("正文") { bridge.perform?("paragraph", nil) }
-                    Button("二级标题") { bridge.perform?("h2", nil) }
-                    Button("三级标题") { bridge.perform?("h3", nil) }
-                } label: { icon("textformat.size", label: "段落样式") }
-                divider
-                button("bold", "粗体", "bold")
-                button("italic", "斜体", "italic")
-                button("underline", "下划线", "underline")
-                divider
-                button("list.bullet", "无序列表", "insertUnorderedList")
-                button("list.number", "有序列表", "insertOrderedList")
-                button("checklist", "待办事项", "task")
-                button("text.quote", "引用", "formatBlock", value: "blockquote")
-                button("chevron.left.forwardslash.chevron.right", "代码块", "code")
-                Button { showLink = true } label: { icon("link", label: "插入链接") }
-                    .accessibilityLabel("插入链接")
-                divider
-                button("arrow.uturn.backward", "撤销", "undo")
-                button("arrow.uturn.forward", "重做", "redo")
+        VStack(spacing: 10) {
+            if isExpanded { formatGrid }
+            HStack(spacing: 0) {
+                commandButton("arrow.uturn.backward", "撤销", "undo")
+                commandButton("arrow.uturn.forward", "重做", "redo")
+                Button { showInfo = true } label: {
+                    Image(systemName: "number")
+                        .font(.title3)
+                        .frame(width: 46, height: 44)
+                }
+                .accessibilityLabel("标签")
+                Button {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .font(.title3)
+                        .frame(width: 46, height: 44)
+                }
+                .accessibilityLabel("收起键盘")
+                Button { showInfo = true } label: {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.title3)
+                        .frame(width: 46, height: 44)
+                }
+                .accessibilityLabel("笔记信息")
+                Button { isExpanded.toggle() } label: {
+                    Text(isExpanded ? "ABC" : "B I U")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(width: 58, height: 44)
+                }
+                .accessibilityLabel(isExpanded ? "收起格式面板" : "展开格式面板")
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 5)
+            .background(.regularMaterial, in: Capsule())
+            .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
         }
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 
-    private var divider: some View {
-        Divider().frame(height: 22).padding(.horizontal, 4)
+    private var formatGrid: some View {
+        LazyVGrid(columns: columns, spacing: 7) {
+            commandButton("textformat.size", "二级标题", "h2")
+            commandButton("bold", "粗体", "bold")
+            commandButton("italic", "斜体", "italic")
+            commandButton("underline", "下划线", "underline")
+            commandButton("strikethrough", "删除线", "strikeThrough")
+            commandButton("text.quote", "引用", "formatBlock", value: "blockquote")
+            commandButton("list.bullet", "无序列表", "insertUnorderedList")
+            commandButton("list.number", "有序列表", "insertOrderedList")
+            commandButton("checklist", "待办事项", "task")
+            commandButton("chevron.left.forwardslash.chevron.right", "代码块", "code")
+            Button { showLink = true } label: {
+                Image(systemName: "link")
+                    .font(.title3)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .accessibilityLabel("插入链接")
+            commandButton("textformat", "正文", "paragraph")
+        }
+        .padding(8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
     }
 
-    private func button(_ iconName: String, _ label: String, _ command: String, value: String? = nil) -> some View {
-        Button { bridge.perform?(command, value) } label: { icon(iconName, label: label) }
-            .accessibilityLabel(label)
-    }
-
-    private func icon(_ name: String, label: String) -> some View {
-        Image(systemName: name)
-            .font(.system(size: 16, weight: .medium))
-            .frame(width: 38, height: 36)
-            .contentShape(Rectangle())
-            .accessibilityLabel(label)
+    private func commandButton(_ icon: String, _ label: String, _ command: String, value: String? = nil) -> some View {
+        Button { bridge.perform?(command, value) } label: {
+            Image(systemName: icon)
+                .font(.title3)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .accessibilityLabel(label)
     }
 }
 
@@ -224,7 +265,7 @@ private struct NoteInfoView: View {
                 Section("信息") {
                     LabeledContent("创建时间", value: note.createdAt.formatted(date: .long, time: .shortened))
                     LabeledContent("修改时间", value: note.modifiedAt.formatted(date: .long, time: .shortened))
-                    LabeledContent("版本", value: "\(note.version)")
+                    LabeledContent("版本", value: note.version)
                 }
             }
             .navigationTitle("笔记信息")

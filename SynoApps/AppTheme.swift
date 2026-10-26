@@ -1,9 +1,9 @@
 import SwiftUI
 
 enum AppTheme {
-    static let accent = Color(red: 0.91, green: 0.39, blue: 0.22)
-    static let sidebar = Color(red: 0.135, green: 0.145, blue: 0.15)
-    static let sidebarSecondary = Color(red: 0.18, green: 0.19, blue: 0.20)
+    static let accent = Color(red: 0.95, green: 0.66, blue: 0.12)
+    static let sidebar = Color(uiColor: .systemGray6)
+    static let sidebarSecondary = Color(uiColor: .systemGray4)
     static let paper = Color(uiColor: .systemBackground)
     static let secondaryPaper = Color(uiColor: .secondarySystemBackground)
     static let subtleText = Color(uiColor: .secondaryLabel)
@@ -46,11 +46,10 @@ struct NoteRow: View {
                 Text(note.modifiedAt.chineseRelativeDescription)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-                if !note.tags.isEmpty {
-                    Text(note.tags.prefix(2).map { "#\($0)" }.joined(separator: " "))
-                        .font(.caption)
+                if note.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption2)
                         .foregroundStyle(AppTheme.accent)
-                        .lineLimit(1)
                 }
                 if note.isEncrypted {
                     Image(systemName: "lock.fill")

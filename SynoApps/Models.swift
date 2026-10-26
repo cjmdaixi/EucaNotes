@@ -115,8 +115,9 @@ struct Note: Identifiable, Codable, Hashable, Sendable {
     var isArchived: Bool
     var isEncrypted: Bool
     var hasLoadedContent: Bool
+    var isPinned: Bool
 
-    init(id: String = UUID().uuidString, title: String, content: String = "", brief: String = "", parentID: String = "", tags: [String] = [], createdAt: Date = .now, modifiedAt: Date = .now, version: String = "", isInTrash: Bool = false, isArchived: Bool = false, isEncrypted: Bool = false, hasLoadedContent: Bool = true) {
+    init(id: String = UUID().uuidString, title: String, content: String = "", brief: String = "", parentID: String = "", tags: [String] = [], createdAt: Date = .now, modifiedAt: Date = .now, version: String = "", isInTrash: Bool = false, isArchived: Bool = false, isEncrypted: Bool = false, hasLoadedContent: Bool = true, isPinned: Bool = false) {
         self.id = id
         self.title = title
         self.content = content
@@ -130,11 +131,12 @@ struct Note: Identifiable, Codable, Hashable, Sendable {
         self.isArchived = isArchived
         self.isEncrypted = isEncrypted
         self.hasLoadedContent = hasLoadedContent
+        self.isPinned = isPinned
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, title, content, brief, parentID, tags, createdAt, modifiedAt, version
-        case isInTrash, isArchived, isEncrypted, hasLoadedContent
+        case isInTrash, isArchived, isEncrypted, hasLoadedContent, isPinned
     }
 
     init(from decoder: Decoder) throws {
@@ -156,6 +158,7 @@ struct Note: Identifiable, Codable, Hashable, Sendable {
         isArchived = try container.decode(Bool.self, forKey: .isArchived)
         isEncrypted = try container.decode(Bool.self, forKey: .isEncrypted)
         hasLoadedContent = try container.decode(Bool.self, forKey: .hasLoadedContent)
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
     }
 
     init(json: JSONValue) {
@@ -174,6 +177,7 @@ struct Note: Identifiable, Codable, Hashable, Sendable {
         isArchived = json["archive"]?.boolValue ?? false
         isEncrypted = json["encrypt"]?.boolValue ?? false
         hasLoadedContent = json["content"] != nil
+        isPinned = false
     }
 
     var displayTitle: String {

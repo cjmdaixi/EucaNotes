@@ -110,7 +110,7 @@ struct RichTextEditor: UIViewRepresentable {
     private static let document = """
     <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
     <style>
-    :root { color-scheme: light dark; --paper:#fff; --ink:#262628; --muted:#8b8b90; --accent:#e76438; --rule:#e7e7e9; }
+    :root { color-scheme: light dark; --paper:#fff; --ink:#262628; --muted:#8b8b90; --accent:#f2a81e; --rule:#e7e7e9; }
     @media (prefers-color-scheme:dark) { :root { --paper:#1c1c1e; --ink:#f2f2f2; --muted:#929298; --rule:#38383a; } }
     * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
     html,body { margin:0; padding:0; background:var(--paper); }

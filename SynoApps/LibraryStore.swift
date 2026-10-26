@@ -277,7 +277,16 @@ final class LibraryStore {
             guard matchesFilter else { return false }
             let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             return query.isEmpty || note.title.localizedCaseInsensitiveContains(query) || note.preview.localizedCaseInsensitiveContains(query) || note.tags.contains { $0.localizedCaseInsensitiveContains(query) }
-        }.sorted { $0.modifiedAt > $1.modifiedAt }
+        }.sorted {
+            if $0.isPinned != $1.isPinned { return $0.isPinned && !$1.isPinned }
+            return $0.modifiedAt > $1.modifiedAt
+        }
+    }
+
+    func togglePin(id: String) {
+        guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
+        notes[index].isPinned.toggle()
+        persistCache()
     }
 
     func note(id: String?) -> Note? {
