@@ -32,9 +32,13 @@ struct LoginView: View {
             VStack(spacing: 0) {
                 SynoMark(size: 68)
                     .padding(.bottom, 20)
-                Text("Note Station")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                Text("连接群晖，带走你的每一则灵感")
+                Text("桉记")
+                    .font(.system(size: 36, weight: .bold, design: .serif))
+                Text("Euca Diary")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(AppTheme.accent)
+                    .padding(.top, 2)
+                Text("把每一天，留成一张时光卡片")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.top, 7)
@@ -153,7 +157,6 @@ struct LoginView: View {
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .scrollDismissesKeyboard(.interactively)
-        .onAppear { focusedField = activeServer.isEmpty ? .server : .account }
         .onChange(of: connectionMode) { _, _ in focusedField = .server }
         .onChange(of: store.requiresOTP) { _, required in
             if required { focusedField = .otp }

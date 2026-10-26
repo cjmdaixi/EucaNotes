@@ -72,17 +72,34 @@ struct Notebook: Identifiable, Codable, Hashable, Sendable {
     let id: String
     var title: String
     var itemCount: Int
+    var stack: String
+    var category: String
 
-    init(id: String, title: String, itemCount: Int = 0) {
+    init(id: String, title: String, itemCount: Int = 0, stack: String = "", category: String = "notebook") {
         self.id = id
         self.title = title
         self.itemCount = itemCount
+        self.stack = stack
+        self.category = category
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, title, itemCount, stack, category }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        itemCount = try container.decode(Int.self, forKey: .itemCount)
+        stack = try container.decodeIfPresent(String.self, forKey: .stack) ?? ""
+        category = try container.decodeIfPresent(String.self, forKey: .category) ?? "notebook"
     }
 
     init(json: JSONValue) {
         id = json["object_id"]?.stringValue ?? UUID().uuidString
         title = json["title"]?.stringValue ?? "未命名笔记本"
-        itemCount = json["item_count"]?.intValue ?? 0
+        itemCount = json["item_count"]?.intValue ?? json["items"]?.arrayValue.count ?? 0
+        stack = json["stack"]?.stringValue ?? ""
+        category = json["category"]?.stringValue ?? "notebook"
     }
 }
 

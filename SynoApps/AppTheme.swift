@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum AppTheme {
-    static let accent = Color(red: 0.95, green: 0.66, blue: 0.12)
+    static let accent = Color(red: 0.25, green: 0.48, blue: 0.39)
     static let sidebar = Color(uiColor: .systemGray6)
     static let sidebarSecondary = Color(uiColor: .systemGray4)
     static let paper = Color(uiColor: .systemBackground)
@@ -16,7 +16,7 @@ struct SynoMark: View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
                 .fill(AppTheme.accent)
-            Image(systemName: "note.text")
+            Image(systemName: "book.closed.fill")
                 .font(.system(size: size * 0.46, weight: .medium))
                 .foregroundStyle(.white)
                 .offset(y: -1)

@@ -5,13 +5,16 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "SynoApps" / "Assets.xcassets" / "AppIcon.appiconset"
 OUT.mkdir(parents=True, exist_ok=True)
 size = 1024
-image = Image.new("RGB", (size, size), (231, 100, 56))
+image = Image.new("RGB", (size, size), (64, 122, 99))
 draw = ImageDraw.Draw(image)
-# A quiet, code-drawn paper mark; no reference-app artwork is reused.
-draw.rounded_rectangle((252, 208, 772, 816), radius=70, fill=(255, 251, 246))
-draw.rounded_rectangle((334, 354, 690, 386), radius=16, fill=(231, 100, 56))
-draw.rounded_rectangle((334, 478, 690, 510), radius=16, fill=(231, 100, 56))
-draw.rounded_rectangle((334, 602, 586, 634), radius=16, fill=(231, 100, 56))
+# An original diary-card mark; no reference-app artwork is reused.
+draw.rounded_rectangle((224, 154, 800, 870), radius=92, fill=(244, 241, 224))
+draw.rounded_rectangle((224, 154, 800, 348), radius=92, fill=(219, 229, 205))
+draw.rectangle((224, 256, 800, 348), fill=(219, 229, 205))
+draw.ellipse((326, 410, 544, 628), fill=(174, 196, 158))
+draw.polygon([(366, 692), (690, 452), (690, 692)], fill=(100, 145, 114))
+draw.polygon([(294, 692), (526, 520), (690, 692)], fill=(132, 166, 126))
+draw.rounded_rectangle((326, 748, 698, 784), radius=18, fill=(64, 122, 99))
 import json
 
 icons = []

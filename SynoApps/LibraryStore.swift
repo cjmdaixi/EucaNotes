@@ -19,6 +19,9 @@ final class LibraryStore {
     var syncState: SyncState = .idle
     var errorMessage: String?
     var showError = false
+    var diaryImages: [String: Data] = [:]
+    var loadingDiaryImageIDs: Set<String> = []
+    var isPreparingDiary = false
 
     private let api = SynologyAPI()
     private let sessions = SessionStore()
@@ -27,6 +30,7 @@ final class LibraryStore {
     private var parentIDBeforeEdit: [String: String] = [:]
     private var metadataEdited: Set<String> = []
     private var syncGeneration = 0
+    private var diaryPreparationTask: Task<Void, Error>?
 
     var isAuthenticated: Bool { session != nil }
     var isDemo: Bool { session?.isDemo == true }
@@ -117,6 +121,7 @@ final class LibraryStore {
                 }
             }
             apply(LibraryPayload(notebooks: payload.notebooks, notes: merged, tags: payload.tags))
+            try await ensureDiaryLibrary(session: session)
             syncState = .saved(.now)
         } catch SynologyError.api(_, 105), SynologyError.api(_, 119) {
             sessions.clear()
@@ -125,6 +130,45 @@ final class LibraryStore {
         } catch {
             syncState = .failed(error.localizedDescription)
             if notes.isEmpty { presentError(error.localizedDescription) }
+        }
+    }
+
+    private func ensureDiaryLibrary(session: SynologySession) async throws {
+        if let diaryPreparationTask { return try await diaryPreparationTask.value }
+        let task = Task { try await prepareDiaryLibrary(session: session) }
+        diaryPreparationTask = task
+        defer { diaryPreparationTask = nil }
+        try await task.value
+    }
+
+    private func prepareDiaryLibrary(session: SynologySession) async throws {
+        isPreparingDiary = true
+        defer { isPreparingDiary = false }
+        if !diaryMonths.contains(where: { $0.title == DiaryText.notebookTitle() }) {
+            let month = try await api.createNotebook(title: DiaryText.notebookTitle(), stack: Self.diaryShelfName, session: session)
+            notebooks.append(month)
+        }
+        for month in diaryMonths where infoNote(monthID: month.id) == nil {
+            var info = try await api.createNote(title: "信息", notebookID: month.id, session: session)
+            info.content = "<p>背景照片：</p>"
+            if !session.isDemo { info = try await api.saveNote(info, session: session) }
+            notes.append(info)
+        }
+        persistCache()
+    }
+
+    func loadDiaryImage(noteID: String, backgroundOnly: Bool = false) async {
+        guard diaryImages[noteID] == nil, !loadingDiaryImageIDs.contains(noteID), !isDemo else { return }
+        loadingDiaryImageIDs.insert(noteID)
+        defer { loadingDiaryImageIDs.remove(noteID) }
+        if note(id: noteID)?.hasLoadedContent == false { await loadNote(id: noteID) }
+        guard let session, let note = note(id: noteID),
+              let source = DiaryText.imageSource(in: note.content, after: backgroundOnly ? "背景照片：" : nil),
+              !source.isEmpty else { return }
+        do {
+            diaryImages[noteID] = try await api.imageData(source: source, session: session)
+        } catch {
+            if !Task.isCancelled { diaryImages.removeValue(forKey: noteID) }
         }
     }
 
@@ -220,6 +264,46 @@ final class LibraryStore {
         } catch {
             syncState = .failed(error.localizedDescription)
             presentError(error.localizedDescription)
+        }
+    }
+
+    func createDiary(monthID: String) async -> String? {
+        guard let session, diaryMonths.contains(where: { $0.id == monthID }) else { return nil }
+        let title: String
+        if let month = diaryMonth(id: monthID) {
+            let now = Date.now
+            let currentYear = DiaryText.calendar.component(.year, from: now)
+            let currentMonth = DiaryText.calendar.component(.month, from: now)
+            let currentDay = DiaryText.calendar.component(.day, from: now)
+            let firstDay = DiaryText.calendar.date(from: DateComponents(year: month.year, month: month.month)) ?? now
+            let dayRange = DiaryText.calendar.range(of: .day, in: .month, for: firstDay)?.count ?? 31
+            let day = (month.year == currentYear && month.month == currentMonth) ? currentDay : min(currentDay, dayRange)
+            title = "\(month.month)月\(day)日"
+        } else {
+            title = DiaryText.noteTitle()
+        }
+        if let existing = diaryNotes(monthID: monthID).first(where: { $0.title == title }) {
+            selectedNoteID = existing.id
+            return existing.id
+        }
+        syncState = .syncing
+        do {
+            let note: Note
+            if session.isDemo {
+                note = Note(title: title, content: "<p><br></p>", parentID: monthID)
+                try await Task.sleep(for: .milliseconds(200))
+            } else {
+                note = try await api.createNote(title: title, notebookID: monthID, session: session)
+            }
+            notes.insert(note, at: 0)
+            selectedNoteID = note.id
+            syncState = .saved(.now)
+            persistCache()
+            return note.id
+        } catch {
+            syncState = .failed(error.localizedDescription)
+            presentError(error.localizedDescription)
+            return nil
         }
     }
 
@@ -326,13 +410,15 @@ final class LibraryStore {
     }
 
     private static func previewPayload() -> LibraryPayload {
-        let personal = Notebook(id: "personal", title: "个人笔记", itemCount: 2)
-        let work = Notebook(id: "work", title: "工作", itemCount: 1)
+        let current = Notebook(id: "current-month", title: DiaryText.notebookTitle(), stack: diaryShelfName)
+        let previous = Notebook(id: "previous-month", title: "2026年9月", stack: diaryShelfName)
         let notes = [
-            Note(id: "welcome", title: "欢迎使用 SynoApps", content: "<h2>你的笔记，随时在手边。</h2><p>这是一个可交互的预览笔记。连接群晖后，这里会显示 Note Station 中的真实内容。</p><h3>像书写一样简单</h3><ul><li>深色侧栏与清晰的笔记列表</li><li>标题、正文与富文本格式</li><li>离线缓存和自动保存</li></ul><blockquote>试着选择这段文字，或使用下方工具栏编辑。</blockquote>", parentID: personal.id, tags: ["指南"], modifiedAt: .now),
-            Note(id: "reading", title: "阅读清单", content: "<h3>本月想读</h3><ul><li>《设计中的设计》</li><li>《献给阿尔吉侬的花束》</li><li>《纳瓦尔宝典》</li></ul><p>在通勤时记录触动自己的句子。</p>", parentID: personal.id, tags: ["阅读"], modifiedAt: .now.addingTimeInterval(-3600 * 22)),
-            Note(id: "meeting", title: "产品讨论会", content: "<p><strong>目标：</strong>让记录与查找都更自然。</p><ol><li>确认首版范围</li><li>整理同步边界情况</li><li>完成真机体验验证</li></ol>", parentID: work.id, tags: ["工作"], modifiedAt: .now.addingTimeInterval(-3600 * 50))
+            Note(id: "current-info", title: "信息", content: "<p>背景照片：</p>", parentID: current.id),
+            Note(id: "previous-info", title: "信息", content: "<p>背景照片：</p>", parentID: previous.id),
+            Note(id: "today", title: DiaryText.noteTitle(), content: "<h2>把今天留在桉记</h2><p>傍晚的风穿过树叶，光落在窗台上。那些平常的小事，也值得认真记下来。</p>", parentID: current.id),
+            Note(id: "earlier", title: "10月3日", content: "<p>沿着老街慢慢走，发现了一家安静的小店。读了几页书，喝完一杯热茶。</p>", parentID: current.id, modifiedAt: .now.addingTimeInterval(-3600 * 48)),
+            Note(id: "autumn", title: "9月28日", content: "<p>九月末，天气终于有了一点秋天的意思。</p>", parentID: previous.id)
         ]
-        return LibraryPayload(notebooks: [personal, work], notes: notes, tags: [NoteTag(id: "guide", title: "指南"), NoteTag(id: "reading", title: "阅读"), NoteTag(id: "work", title: "工作")])
+        return LibraryPayload(notebooks: [current, previous], notes: notes, tags: [])
     }
 }

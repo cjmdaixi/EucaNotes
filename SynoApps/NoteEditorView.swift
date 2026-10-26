@@ -2,7 +2,9 @@ import SwiftUI
 
 struct NoteEditorView: View {
     @Environment(LibraryStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     let noteID: String
+    var diaryMode = false
     @State private var title = ""
     @State private var bridge = RichTextEditorBridge()
     @State private var saveTask: Task<Void, Never>?
@@ -62,12 +64,15 @@ struct NoteEditorView: View {
         }
         .confirmationDialog(store.note(id: noteID)?.isInTrash == true ? "永久删除这篇笔记？此操作无法撤销。" : "将这篇笔记移到废纸篓？", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button(store.note(id: noteID)?.isInTrash == true ? "永久删除" : "移到废纸篓", role: .destructive) {
-                Task { await store.moveToTrash(id: noteID) }
+                Task {
+                    await store.moveToTrash(id: noteID)
+                    if diaryMode { dismiss() }
+                }
             }
             Button("取消", role: .cancel) {}
         }
         .sheet(isPresented: $showInfo) {
-            if let note = store.note(id: noteID) { NoteInfoView(note: note) }
+            if let note = store.note(id: noteID) { NoteInfoView(note: note, diaryMode: diaryMode) }
         }
         .sheet(isPresented: $showLink) {
             NavigationStack {
@@ -102,19 +107,26 @@ struct NoteEditorView: View {
 
     private func editor(_ note: Note) -> some View {
         VStack(spacing: 0) {
-            TextField("未命名新笔记", text: $title, axis: .vertical)
-                .font(.system(size: 30, weight: .bold))
-                .lineLimit(1...3)
-                .padding(.horizontal, 22)
-                .padding(.top, 12)
-                .padding(.bottom, 6)
-                .disabled(note.isInTrash)
-                .accessibilityIdentifier("note-title-field")
-                .onChange(of: title) { _, newTitle in
-                    guard newTitle != store.note(id: noteID)?.title else { return }
-                    store.updateNote(id: noteID, title: newTitle)
-                    scheduleSave()
+            Group {
+                if diaryMode {
+                    Text(note.title)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    TextField("未命名新笔记", text: $title, axis: .vertical)
+                        .lineLimit(1...3)
+                        .disabled(note.isInTrash)
+                        .accessibilityIdentifier("note-title-field")
+                        .onChange(of: title) { _, newTitle in
+                            guard newTitle != store.note(id: noteID)?.title else { return }
+                            store.updateNote(id: noteID, title: newTitle)
+                            scheduleSave()
+                        }
                 }
+            }
+            .font(.system(size: 30, weight: .bold, design: diaryMode ? .serif : .default))
+            .padding(.horizontal, 22)
+            .padding(.top, 12)
+            .padding(.bottom, 6)
             if store.loadingNoteIDs.contains(noteID) {
                 ProgressView("正在载入笔记…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -246,21 +258,24 @@ private struct NoteInfoView: View {
     @Environment(LibraryStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let note: Note
+    var diaryMode = false
     @State private var tagText = ""
     @State private var notebookID = ""
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("所属笔记本") {
-                    Picker("笔记本", selection: $notebookID) {
-                        ForEach(store.notebooks) { notebook in
-                            Text(notebook.title).tag(notebook.id)
+                if !diaryMode {
+                    Section("所属笔记本") {
+                        Picker("笔记本", selection: $notebookID) {
+                            ForEach(store.notebooks) { notebook in
+                                Text(notebook.title).tag(notebook.id)
+                            }
                         }
                     }
-                }
-                Section("标签") {
-                    TextField("用逗号分隔，例如：工作, 灵感", text: $tagText, axis: .vertical)
+                    Section("标签") {
+                        TextField("用逗号分隔，例如：工作, 灵感", text: $tagText, axis: .vertical)
+                    }
                 }
                 Section("信息") {
                     LabeledContent("创建时间", value: note.createdAt.formatted(date: .long, time: .shortened))

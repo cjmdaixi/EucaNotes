@@ -132,6 +132,56 @@ struct SynologyAPI: Sendable {
         return Note(json: object)
     }
 
+    func createNotebook(title: String, stack: String, session: SynologySession) async throws -> Notebook {
+        // The official client creates a notebook first, then assigns its stack.
+        // Assigning a new stack name also creates the bookshelf on the NAS.
+        let data = try await request(
+            session: session,
+            api: "SYNO.NoteStation.Notebook",
+            version: 2,
+            method: "create",
+            params: ["title": .string(title), "commit_msg": .object(["device": .string("Euca Diary for iOS")])]
+        )
+        guard let id = data["object_id"]?.stringValue else { throw SynologyError.invalidResponse }
+        if !stack.isEmpty {
+            _ = try await request(
+                session: session,
+                api: "SYNO.NoteStation.Notebook",
+                version: 2,
+                method: "set",
+                params: ["object_id": .string(id), "title": .string(title), "stack": .string(stack)]
+            )
+        }
+        let result = try await request(session: session, api: "SYNO.NoteStation.Notebook", version: 2, method: "get", params: ["object_id": .string(id)])
+        let object = result["notebook"] ?? result
+        guard object["object_id"] != nil else { throw SynologyError.invalidResponse }
+        return Notebook(json: object)
+    }
+
+    func imageData(source: String, session: SynologySession) async throws -> Data {
+        if source.hasPrefix("data:image"), let comma = source.firstIndex(of: ",") {
+            let encoded = String(source[source.index(after: comma)...])
+            guard let data = Data(base64Encoded: encoded) else { throw SynologyError.invalidResponse }
+            return data
+        }
+        var resolved = source
+        if !resolved.hasPrefix("http://") && !resolved.hasPrefix("https://") {
+            resolved = session.baseURL + (resolved.hasPrefix("/") ? resolved : "/" + resolved)
+        }
+        guard var components = URLComponents(string: resolved) else { throw SynologyError.invalidResponse }
+        var query = components.queryItems ?? []
+        if !query.contains(where: { $0.name == "_sid" }) { query.append(URLQueryItem(name: "_sid", value: session.sid)) }
+        components.queryItems = query
+        guard let url = components.url else { throw SynologyError.invalidResponse }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 25
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), !data.isEmpty else {
+            throw SynologyError.network("无法载入月卡背景照片。")
+        }
+        return data
+    }
+
     func createNote(title: String, notebookID: String, session: SynologySession) async throws -> Note {
         let content = "<p><br></p>"
         let data = try await request(

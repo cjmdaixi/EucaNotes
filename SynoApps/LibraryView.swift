@@ -2,56 +2,20 @@ import SwiftUI
 
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var store
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var showSidebar = false
+    @State private var path: [DiaryRoute] = []
 
     var body: some View {
         @Bindable var store = store
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarView()
-                .navigationSplitViewColumnWidth(min: 230, ideal: 270, max: 310)
-        } content: {
-            NoteListView(showSidebar: $showSidebar)
-                .navigationSplitViewColumnWidth(min: 290, ideal: 350, max: 440)
-        } detail: {
-            if let note = store.note(id: store.selectedNoteID) {
-                NoteEditorView(noteID: note.id)
-                    .id(note.id)
-            } else {
-                VStack(spacing: 18) {
-                    Image(systemName: "note.text")
-                        .font(.system(size: 54, weight: .thin))
-                        .foregroundStyle(.quaternary)
-                    Text("选择一篇笔记")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.secondary)
-                    Text("或新建一篇，让想法落在这里")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(AppTheme.paper)
-            }
-        }
-        .navigationSplitViewStyle(.balanced)
-        .tint(AppTheme.accent)
-        .overlay {
-            if showSidebar {
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Color.black.opacity(0.18)
-                            .ignoresSafeArea()
-                            .onTapGesture { showSidebar = false }
-                        SidebarView(onSelect: { showSidebar = false })
-                            .frame(width: min(320, proxy.size.width * 0.82))
-                            .background(AppTheme.sidebar)
-                            .transition(.move(edge: .leading))
+        NavigationStack(path: $path) {
+            MonthCardsView(path: $path)
+                .navigationDestination(for: DiaryRoute.self) { route in
+                    switch route {
+                    case .month(let id): DiaryListView(monthID: id, path: $path)
+                    case .note(let id): NoteEditorView(noteID: id, diaryMode: true)
                     }
                 }
-                .zIndex(20)
-            }
         }
-        .animation(.easeInOut(duration: 0.22), value: showSidebar)
+        .tint(AppTheme.accent)
         .task(id: store.session?.sid) {
             if !store.isDemo { await store.sync() }
         }
@@ -63,260 +27,313 @@ struct LibraryView: View {
     }
 }
 
-private struct SidebarView: View {
+private struct MonthCardsView: View {
     @Environment(LibraryStore.self) private var store
-    var onSelect: (() -> Void)? = nil
+    @Binding var path: [DiaryRoute]
+    @State private var selectedMonthID: String?
+    @State private var selectedYear = DiaryText.calendar.component(.year, from: .now)
+    @State private var isCreating = false
+
+    private var months: [DiaryMonth] { store.diaryMonths.filter { $0.year == selectedYear } }
 
     var body: some View {
-        @Bindable var store = store
-        List(selection: Binding<LibraryFilter?>(get: { store.filter }, set: { value in
-            if let value {
-                store.filter = value
-                onSelect?()
-            }
-        })) {
-            Section {
-                SidebarRow(title: "笔记", icon: "note.text", selected: store.filter == .all)
-                    .tag(LibraryFilter.all)
-                SidebarRow(title: "废纸篓", icon: "trash", selected: store.filter == .trash)
-                    .tag(LibraryFilter.trash)
-            }
-
-            Section("笔记本") {
-                ForEach(store.notebooks) { notebook in
-                    SidebarRow(
-                        title: notebook.title,
-                        icon: "book.closed",
-                        count: store.notes.filter { $0.parentID == notebook.id && !$0.isInTrash }.count,
-                        selected: store.filter == .notebook(notebook.id),
-                        showsChevron: true
-                    )
-                    .tag(LibraryFilter.notebook(notebook.id))
-                }
-            }
-
-            if !store.tags.isEmpty {
-                Section("标签") {
-                    ForEach(store.tags) { tag in
-                        SidebarRow(title: tag.title, icon: "number", selected: store.filter == .tag(tag.title))
-                            .tag(LibraryFilter.tag(tag.title))
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("桉记")
+                            .font(.system(size: 30, weight: .bold, design: .serif))
+                        Text(Date.now.formatted(.dateTime.year().month().day().weekday(.wide).locale(Locale(identifier: "zh_CN"))))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                }
-            }
-        }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .background(AppTheme.sidebar)
-        .foregroundStyle(.primary)
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top) {
-            HStack {
-                Spacer()
-                Menu {
-                    Button { Task { await store.sync() } } label: {
-                        Label("立即同步", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .disabled(store.isSyncing)
-                    Divider()
-                    Button(role: .destructive) {
-                        Task { await store.signOut() }
+                    Spacer()
+                    Menu {
+                        Button { Task { await store.sync() } } label: {
+                            Label("立即同步", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(store.isSyncing)
+                        Divider()
+                        Button(role: .destructive) { Task { await store.signOut() } } label: {
+                            Label(store.isDemo ? "退出预览" : "退出登录", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
                     } label: {
-                        Label(store.isDemo ? "退出预览" : "退出登录", systemImage: "rectangle.portrait.and.arrow.right")
+                        Image(systemName: "ellipsis")
+                            .font(.title3.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                            .background(.regularMaterial, in: Circle())
+                    }
+                    .accessibilityLabel("账户与同步")
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
+
+                HStack {
+                    Button { changeYear(-1) } label: {
+                        Image(systemName: "chevron.left").frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("上一年")
+                    Text(String(selectedYear))
+                        .font(.system(size: 31, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .frame(minWidth: 130)
+                    Button { changeYear(1) } label: {
+                        Image(systemName: "chevron.right").frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("下一年")
+                }
+                .foregroundStyle(.primary)
+                .padding(.top, 10)
+
+                if months.isEmpty {
+                    Spacer()
+                    if store.isSyncing || store.isPreparingDiary {
+                        ProgressView("正在准备桉记书架…")
+                    } else {
+                        ContentUnavailableView("这一年还没有日记", systemImage: "book.closed", description: Text("切换年份，或新建今天的日记。"))
+                    }
+                    Spacer()
+                } else {
+                    let cardWidth = min(340, proxy.size.width * 0.78)
+                    let cardHeight = min(510, proxy.size.height * 0.61)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: 18) {
+                            ForEach(months) { month in
+                                MonthCard(month: month, count: store.diaryNotes(monthID: month.id).count, info: store.infoNote(monthID: month.id))
+                                    .frame(width: cardWidth, height: cardHeight)
+                                    .scrollTransition(.interactive) { content, phase in
+                                        content.scaleEffect(phase.isIdentity ? 1 : 0.94).opacity(phase.isIdentity ? 1 : 0.7)
+                                    }
+                                    .onTapGesture { path.append(.month(month.id)) }
+                            }
+                        }
+                        .scrollTargetLayout()
+                        .padding(.horizontal, (proxy.size.width - cardWidth) / 2)
+                    }
+                    .scrollTargetBehavior(.viewAligned)
+                    .scrollPosition(id: $selectedMonthID)
+                    .frame(height: cardHeight + 30)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("month-card-carousel")
+                }
+
+                if let selected = months.first(where: { $0.id == selectedMonthID }) ?? months.first {
+                    Text("\(selected.yearTitle) · \(selected.monthTitle)")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                }
+
+                Button {
+                    guard let month = months.first(where: { $0.id == selectedMonthID }) ?? months.first else { return }
+                    isCreating = true
+                    Task {
+                        if let id = await store.createDiary(monthID: month.id) { path.append(.month(month.id)); path.append(.note(id)) }
+                        isCreating = false
                     }
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.title2.weight(.medium))
-                        .frame(width: 48, height: 44)
-                        .contentShape(Rectangle())
+                    Image(systemName: isCreating ? "progress.view" : "plus")
+                        .font(.system(size: 26, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 62, height: 62)
+                        .background(AppTheme.accent, in: Circle())
+                        .shadow(color: AppTheme.accent.opacity(0.28), radius: 16, y: 7)
                 }
-                .accessibilityLabel("账户与同步")
+                .disabled(months.isEmpty || isCreating)
+                .accessibilityLabel("写日记")
+                .accessibilityIdentifier("new-diary-button")
+                .padding(.top, 22)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 4)
-            .background(AppTheme.sidebar)
+            .frame(maxWidth: 700)
+            .frame(maxWidth: .infinity)
         }
-        .safeAreaInset(edge: .bottom) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(store.isDemo ? AppTheme.accent : .green)
-                    .frame(width: 7, height: 7)
-                Text(store.isDemo ? "界面预览" : store.session?.account ?? "已连接")
-                    .lineLimit(1)
-                Spacer()
-                Image(systemName: "checkmark.icloud")
+        .background(AppTheme.paper)
+        .navigationBarHidden(true)
+        .onAppear(perform: selectCurrentMonth)
+        .onChange(of: store.diaryMonths.map(\.id)) { _, _ in
+            if selectedMonthID == nil {
+                selectCurrentMonth()
+            } else if !months.contains(where: { $0.id == selectedMonthID }) {
+                selectedMonthID = months.first?.id
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(AppTheme.sidebar)
+        }
+    }
+
+    private func selectCurrentMonth() {
+        let now = Date.now
+        let year = DiaryText.calendar.component(.year, from: now)
+        selectedYear = year
+        selectedMonthID = store.diaryMonths.first { $0.year == year && $0.month == DiaryText.calendar.component(.month, from: now) }?.id ?? months.first?.id
+    }
+
+    private func changeYear(_ offset: Int) {
+        selectedYear += offset
+        selectedMonthID = store.diaryMonths.first { $0.year == selectedYear }?.id
+    }
+}
+
+private struct MonthCard: View {
+    @Environment(LibraryStore.self) private var store
+    let month: DiaryMonth
+    let count: Int
+    let info: Note?
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            background
+            LinearGradient(colors: [.black.opacity(0.38), .clear, .clear, .black.opacity(0.4)], startPoint: .top, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(month.monthTitle)
+                    .font(.system(size: 52, weight: .bold, design: .serif))
+                    .shadow(color: .black.opacity(0.25), radius: 5, y: 2)
+                Spacer()
+                HStack {
+                    Label("\(count) 篇日记", systemImage: "book.closed.fill")
+                    Spacer()
+                    if store.loadingDiaryImageIDs.contains(info?.id ?? "") { ProgressView().tint(.white) }
+                    Image(systemName: "chevron.right.circle.fill")
+                }
+                .font(.subheadline.weight(.semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(26)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 30).stroke(.white.opacity(0.22), lineWidth: 1))
+        .shadow(color: .black.opacity(0.14), radius: 22, y: 10)
+        .contentShape(RoundedRectangle(cornerRadius: 30))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(month.title)，\(count) 篇日记")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("month-card-\(month.year)-\(month.month)")
+        .task(id: info?.id) {
+            guard let info else { return }
+            await store.loadDiaryImage(noteID: info.id, backgroundOnly: true)
+        }
+    }
+
+    @ViewBuilder private var background: some View {
+        if let info, let data = store.diaryImages[info.id], let image = UIImage(data: data) {
+            Image(uiImage: image).resizable().scaledToFill()
+        } else {
+            ZStack {
+                LinearGradient(colors: [Color(red: 0.28, green: 0.42, blue: 0.36), Color(red: 0.12, green: 0.23, blue: 0.23)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                Circle().fill(.white.opacity(0.08)).frame(width: 300).offset(x: 100, y: -150)
+                Image(systemName: "leaf.fill")
+                    .font(.system(size: 180, weight: .thin))
+                    .foregroundStyle(.white.opacity(0.1))
+                    .rotationEffect(.degrees(-25))
+                    .offset(x: 45, y: 70)
+            }
         }
     }
 }
 
-private struct SidebarRow: View {
-    let title: String
-    let icon: String
-    var count: Int? = nil
-    var selected: Bool
-    var showsChevron = false
+private struct DiaryListView: View {
+    @Environment(LibraryStore.self) private var store
+    let monthID: String
+    @Binding var path: [DiaryRoute]
+    @State private var ascending = false
+    @State private var isCreating = false
 
     var body: some View {
-        HStack(spacing: 13) {
-            Image(systemName: icon)
-                .font(.body.weight(.medium))
-                .foregroundStyle(AppTheme.accent)
-                .frame(width: 20)
-            Text(title)
-                .font(.body)
-                .lineLimit(1)
-            Spacer()
-            if let count {
-                Text("\(count)")
-                    .font(.caption)
+        let notes = ascending ? store.diaryNotes(monthID: monthID).reversed() : Array(store.diaryNotes(monthID: monthID))
+        ScrollView {
+            LazyVStack(spacing: 18) {
+                ForEach(Array(notes), id: \.id) { note in
+                    Button { path.append(.note(note.id)) } label: {
+                        DiaryRow(note: note, month: store.diaryMonth(id: monthID))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("diary-row-\(note.id)")
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 30)
+        }
+        .background(AppTheme.paper)
+        .overlay {
+            if notes.isEmpty && !store.isSyncing {
+                ContentUnavailableView("这个月还没有日记", systemImage: "square.and.pencil", description: Text("点右上角 +，写下今天。"))
+            }
+        }
+        .navigationTitle(store.diaryMonth(id: monthID)?.title ?? "日记")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 6) {
+                    Button { ascending.toggle() } label: {
+                        Image(systemName: ascending ? "arrow.up" : "arrow.down").frame(width: 40, height: 40)
+                    }
+                    .accessibilityLabel(ascending ? "最新日记在前" : "最早日记在前")
+                    Button {
+                        isCreating = true
+                        Task {
+                            if let id = await store.createDiary(monthID: monthID) { path.append(.note(id)) }
+                            isCreating = false
+                        }
+                    } label: {
+                        Image(systemName: isCreating ? "progress.view" : "plus").frame(width: 40, height: 40)
+                    }
+                    .disabled(isCreating)
+                    .accessibilityLabel("新建日记")
+                    .accessibilityIdentifier("new-month-diary-button")
+                }
+            }
+        }
+    }
+}
+
+private struct DiaryRow: View {
+    @Environment(LibraryStore.self) private var store
+    let note: Note
+    let month: DiaryMonth?
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 9) {
+                Text(DiaryText.day(from: note.title).map(String.init) ?? "—")
+                    .font(.system(size: 44, weight: .medium, design: .serif))
+                    .monospacedDigit()
+                if let month {
+                    Text(DiaryText.weekday(for: month, note: note))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text(note.title)
+                    .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            if showsChevron {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.accent)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(selected ? AppTheme.sidebarSecondary : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .contentShape(Rectangle())
-        .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 8))
-        .listRowSeparator(.hidden)
-    }
-}
-
-private struct NoteListView: View {
-    @Environment(LibraryStore.self) private var store
-    @Binding var showSidebar: Bool
-    @State private var isSearchPresented = false
-    @State private var notePendingDeletion: Note?
-    @FocusState private var searchFocused: Bool
-
-    var body: some View {
-        @Bindable var store = store
-        List(selection: Binding<String?>(get: { store.selectedNoteID }, set: { store.selectNote($0) })) {
-            ForEach(store.filteredNotes()) { note in
-                NoteRow(note: note)
-                    .tag(note.id)
-                    .listRowSeparator(.visible)
-                    .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 18))
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) { notePendingDeletion = note } label: {
-                            Image(systemName: "trash")
-                        }
-                        .tint(AppTheme.accent)
-                        Button { store.togglePin(id: note.id) } label: {
-                            Image(systemName: note.isPinned ? "pin.slash" : "pin")
-                        }
-                        .tint(AppTheme.accent.opacity(0.45))
-                    }
-            }
-        }
-        .listStyle(.plain)
-        .background(AppTheme.paper)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button { showSidebar = true } label: {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.primary)
-                        .frame(width: 42, height: 42)
-                        .background(.regularMaterial, in: Circle())
-                }
-                .accessibilityLabel("打开侧栏")
-            }
-            ToolbarItem(placement: .principal) {
-                Menu {
-                    Button("全部笔记") { store.filter = .all }
-                    Button("废纸篓") { store.filter = .trash }
-                    Divider()
-                    ForEach(store.notebooks) { notebook in
-                        Button(notebook.title) { store.filter = .notebook(notebook.id) }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(store.filterTitle())
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.semibold))
+            .frame(width: 104)
+            .frame(maxHeight: .infinity)
+            .background(Color(uiColor: .secondarySystemBackground))
+            VStack(alignment: .leading) {
+                if let data = store.diaryImages[note.id], let image = UIImage(data: data) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    ZStack(alignment: .bottomLeading) {
+                        LinearGradient(colors: [AppTheme.accent.opacity(0.12), AppTheme.accent.opacity(0.28)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        Text(note.preview.isEmpty ? "写下这一天…" : note.preview)
+                            .font(.system(size: 17, design: .serif))
+                            .foregroundStyle(.primary.opacity(0.75))
+                            .lineLimit(4)
+                            .multilineTextAlignment(.leading)
+                            .padding(18)
                     }
                 }
-                .accessibilityLabel("选择笔记本")
             }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    isSearchPresented = true
-                    searchFocused = true
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.primary)
-                        .frame(width: 42, height: 42)
-                        .background(.regularMaterial, in: Circle())
-                }
-                .accessibilityLabel("搜索笔记")
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         }
-        .safeAreaInset(edge: .top) {
-            if isSearchPresented {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("搜索笔记", text: $store.searchText)
-                        .focused($searchFocused)
-                        .submitLabel(.search)
-                        .accessibilityIdentifier("note-search-field")
-                    Button("取消") {
-                        isSearchPresented = false
-                        store.searchText = ""
-                    }
-                    .foregroundStyle(.primary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 9)
-                .background(.regularMaterial)
-            }
-        }
-        .overlay {
-            if store.filteredNotes().isEmpty && !store.isSyncing {
-                EmptyNotesView(isTrash: store.filter == .trash)
-                    .background(AppTheme.paper)
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if store.filter != .trash {
-                Button { Task { await store.createNote() } } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 23, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 58, height: 58)
-                        .background(AppTheme.accent, in: Circle())
-                        .shadow(color: AppTheme.accent.opacity(0.32), radius: 12, y: 5)
-                }
-                .disabled(store.notebooks.isEmpty)
-                .accessibilityLabel("新建笔记")
-                .accessibilityIdentifier("new-note-button")
-                .padding(.trailing, 20)
-                .padding(.bottom, 20)
-            }
-        }
-        .confirmationDialog("将这篇笔记移到废纸篓？", isPresented: Binding(get: { notePendingDeletion != nil }, set: { if !$0 { notePendingDeletion = nil } }), titleVisibility: .visible) {
-            Button("移到废纸篓", role: .destructive) {
-                if let note = notePendingDeletion {
-                    Task { await store.moveToTrash(id: note.id) }
-                }
-                notePendingDeletion = nil
-            }
-            Button("取消", role: .cancel) { notePendingDeletion = nil }
+        .frame(height: 174)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.primary.opacity(0.04)))
+        .shadow(color: .black.opacity(0.055), radius: 12, y: 5)
+        .task(id: note.id) {
+            await store.loadNote(id: note.id)
+            await store.loadDiaryImage(noteID: note.id)
         }
     }
 }
