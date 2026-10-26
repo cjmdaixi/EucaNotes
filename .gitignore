@@ -1,4 +1,5 @@
 .ios-build/
 artifacts/
+.release-secrets/
 .DS_Store
 xcuserdata/
