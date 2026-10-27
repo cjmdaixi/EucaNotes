@@ -27,6 +27,7 @@ final class LibraryStore {
     private let api = SynologyAPI()
     private let sessions = SessionStore()
     private let cache = LibraryCache()
+    private let cacheQueue = DispatchQueue(label: "com.drcjm.eucanotes.library-cache")
     private var editRevisions: [String: Int] = [:]
     private var parentIDBeforeEdit: [String: String] = [:]
     private var metadataEdited: Set<String> = []
@@ -204,7 +205,14 @@ final class LibraryStore {
     func updateNote(id: String, title: String? = nil, content: String? = nil) {
         guard let index = notes.firstIndex(where: { $0.id == id }) else { return }
         if let title { notes[index].title = title }
-        if let content { notes[index].content = content }
+        if let content {
+            let existing = notes[index].content
+            if DiaryText.hasMetadata(in: existing) {
+                notes[index].content = (try? DiaryText.updatingMetadata(in: content, metadata: DiaryText.metadata(in: existing))) ?? content
+            } else {
+                notes[index].content = content
+            }
+        }
         notes[index].modifiedAt = .now
         notes[index].hasLoadedContent = true
         editRevisions[id, default: 0] += 1
@@ -476,7 +484,11 @@ final class LibraryStore {
 
     private func persistCache() {
         guard let session else { return }
-        cache.save(LibraryPayload(notebooks: notebooks, notes: notes, tags: tags), isDemo: session.isDemo)
+        let payload = LibraryPayload(notebooks: notebooks, notes: notes, tags: tags)
+        let isDemo = session.isDemo
+        cacheQueue.async { [cache] in
+            cache.save(payload, isDemo: isDemo)
+        }
     }
 
     private func presentError(_ message: String) {

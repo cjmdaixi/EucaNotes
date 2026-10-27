@@ -6,7 +6,7 @@ struct LibraryPayload: Sendable {
     var tags: [NoteTag]
 }
 
-struct SynologyAPI: Sendable {
+nonisolated struct SynologyAPI: Sendable {
     private let decoder = JSONDecoder()
 
     func normalizedBaseURL(_ input: String, useHTTPS: Bool) throws -> String {

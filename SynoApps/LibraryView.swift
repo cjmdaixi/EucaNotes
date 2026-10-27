@@ -99,7 +99,7 @@ private struct MonthCardsView: View {
                     .accessibilityLabel("下一年")
                 }
                 .foregroundStyle(.primary)
-                .padding(.top, 10)
+                .padding(.top, 56)
 
                 if months.isEmpty {
                     Spacer()
@@ -240,6 +240,11 @@ private struct MonthCarouselView: UIViewRepresentable {
                 store: parent.store
             )
             return cell
+        }
+
+        func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+            guard !parent.showCalendar else { return }
+            parent.path.append(.month(parent.months[indexPath.item].id))
         }
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {

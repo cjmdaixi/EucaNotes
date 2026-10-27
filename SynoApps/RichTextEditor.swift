@@ -28,7 +28,7 @@ struct RichTextEditor: UIViewRepresentable {
         webView.accessibilityLabel = "笔记正文编辑器"
         webView.accessibilityIdentifier = "note-body-editor"
         context.coordinator.webView = webView
-        context.coordinator.pendingHTML = content
+        context.coordinator.pendingHTML = DiaryText.contentWithoutMetadata(in: content)
         bridge.perform = { [weak coordinator = context.coordinator] command, value in
             coordinator?.execute(command, value: value)
         }
@@ -38,11 +38,12 @@ struct RichTextEditor: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
+        let renderedContent = DiaryText.contentWithoutMetadata(in: content)
         if context.coordinator.noteID != noteID {
             context.coordinator.noteID = noteID
-            context.coordinator.setHTML(content)
-        } else if context.coordinator.currentHTML != content, !context.coordinator.isEditing {
-            context.coordinator.setHTML(content)
+            context.coordinator.setHTML(renderedContent)
+        } else if context.coordinator.currentHTML != renderedContent, !context.coordinator.isEditing {
+            context.coordinator.setHTML(renderedContent)
         }
     }
 
@@ -63,7 +64,7 @@ struct RichTextEditor: UIViewRepresentable {
         init(_ parent: RichTextEditor) {
             self.parent = parent
             self.noteID = parent.noteID
-            self.pendingHTML = parent.content
+            self.pendingHTML = DiaryText.contentWithoutMetadata(in: parent.content)
         }
 
         var bridge: RichTextEditorBridge { parent.bridge }
@@ -80,9 +81,10 @@ struct RichTextEditor: UIViewRepresentable {
         }
 
         func setHTML(_ html: String) {
-            pendingHTML = html
-            currentHTML = html
-            guard let data = try? JSONSerialization.data(withJSONObject: [html]),
+            let renderedContent = DiaryText.contentWithoutMetadata(in: html)
+            pendingHTML = renderedContent
+            currentHTML = renderedContent
+            guard let data = try? JSONSerialization.data(withJSONObject: [renderedContent]),
                   let array = String(data: data, encoding: .utf8) else { return }
             let literal = String(array.dropFirst().dropLast())
             webView?.evaluateJavaScript("window.synoSetContent(\(literal));")

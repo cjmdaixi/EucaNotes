@@ -50,7 +50,7 @@ struct SessionStore: Sendable {
     }
 }
 
-struct LibraryCache: Sendable {
+nonisolated struct LibraryCache: Sendable {
     private struct Payload: Codable {
         var notebooks: [Notebook]
         var notes: [Note]
