@@ -198,7 +198,9 @@ nonisolated struct SynologyAPI: Sendable {
         let reference = Data(UUID().uuidString.utf8).base64EncodedString()
         let fieldName = "photo_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
         let embedded = "data:image/jpeg;base64," + jpegData.base64EncodedString()
-        let html = note.content + "\n<p><img ref=\"\(reference)\" src=\"\(embedded)\"></p>"
+        var metadata = note.diaryMetadata
+        metadata.photos.append(embedded)
+        let html = try DiaryText.updatingMetadata(in: note.content, metadata: metadata)
         let fields: [String: JSONValue] = [
             "object_id": .string(note.id),
             "title": .string(note.title),

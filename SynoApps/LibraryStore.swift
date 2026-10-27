@@ -85,12 +85,20 @@ final class LibraryStore {
         session = SynologySession(baseURL: "preview.local", sid: "preview", account: "预览账户", isDemo: true)
         apply(preview)
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1200, height: 1600))
-        diaryImages["november-info"] = renderer.jpegData(withCompressionQuality: 0.85) { context in
+        let photo = renderer.jpegData(withCompressionQuality: 0.85) { context in
             UIColor(red: 0.25, green: 0.48, blue: 0.39, alpha: 1).setFill()
             context.fill(CGRect(x: 0, y: 0, width: 1200, height: 1600))
             UIColor(red: 0.65, green: 0.75, blue: 0.58, alpha: 1).setFill()
             context.cgContext.fillEllipse(in: CGRect(x: 650, y: 160, width: 500, height: 500))
         }
+        diaryImages["november-info"] = photo
+        var metadata = note(id: "today")?.diaryMetadata ?? DiaryMetadata()
+        let source = "data:image/jpeg;base64,\(photo.base64EncodedString())"
+        metadata.photos = [source, source]
+        updateDiaryMetadata(id: "today", metadata: metadata)
+        diaryImages["today#photo#0"] = photo
+        diaryImages["today#photo#1"] = photo
+        diaryImages["today"] = photo
         selectedNoteID = preview.notes.first?.id
         syncState = .saved(.now)
     }
@@ -167,14 +175,55 @@ final class LibraryStore {
         persistCache()
     }
 
+    func diaryPhotos(noteID: String) -> [Data] {
+        let sources = note(id: noteID)?.diaryMetadata.photos ?? []
+        if !sources.isEmpty {
+            return sources.indices.compactMap { diaryImages["\(noteID)#photo#\($0)"] }
+        }
+        if let image = diaryImages[noteID] { return [image] }
+        return []
+    }
+
+    func loadDiaryPhotos(noteID: String) async {
+        if note(id: noteID)?.hasLoadedContent == false { await loadNote(id: noteID) }
+        guard let session, let sources = note(id: noteID)?.diaryMetadata.photos, !sources.isEmpty else {
+            await loadDiaryImage(noteID: noteID)
+            return
+        }
+        for (index, source) in sources.enumerated() {
+            let key = "\(noteID)#photo#\(index)"
+            guard diaryImages[key] == nil, !loadingDiaryImageIDs.contains(key) else { continue }
+            loadingDiaryImageIDs.insert(key)
+            do {
+                let data = try await api.imageData(source: source, session: session)
+                diaryImages[key] = data
+                if index == 0 { diaryImages[noteID] = data }
+            } catch {
+                if !Task.isCancelled { diaryImages.removeValue(forKey: key) }
+            }
+            loadingDiaryImageIDs.remove(key)
+        }
+    }
+
+    func migrateDiaryPhotos(noteID: String) {
+        guard let note = note(id: noteID), note.diaryMetadata.photos.isEmpty else { return }
+        let sources = DiaryText.imageSources(in: note.content)
+        guard !sources.isEmpty else { return }
+        var metadata = note.diaryMetadata
+        metadata.photos = sources
+        let stripped = DiaryText.removingImages(in: note.content)
+        guard (try? DiaryText.updatingMetadata(in: stripped, metadata: metadata)) != nil else { return }
+        updateDiaryMetadata(id: noteID, metadata: metadata)
+    }
+
     func loadDiaryImage(noteID: String, backgroundOnly: Bool = false) async {
-        guard diaryImages[noteID] == nil, !loadingDiaryImageIDs.contains(noteID), !isDemo else { return }
+        guard diaryImages[noteID] == nil, !loadingDiaryImageIDs.contains(noteID) else { return }
         loadingDiaryImageIDs.insert(noteID)
         defer { loadingDiaryImageIDs.remove(noteID) }
         if note(id: noteID)?.hasLoadedContent == false { await loadNote(id: noteID) }
-        guard let session, let note = note(id: noteID),
-              let source = DiaryText.imageSource(in: note.content, after: backgroundOnly ? "背景照片：" : nil),
-              !source.isEmpty else { return }
+        guard let session, let note = note(id: noteID) else { return }
+        let source = note.diaryMetadata.photos.first ?? DiaryText.imageSource(in: note.content, after: backgroundOnly ? "背景照片：" : nil)
+        guard let source, !source.isEmpty else { return }
         do {
             diaryImages[noteID] = try await api.imageData(source: source, session: session)
         } catch {
@@ -368,11 +417,14 @@ final class LibraryStore {
         syncState = .syncing
         do {
             if session.isDemo {
-                diaryImages[id] = jpegData
                 let source = "data:image/jpeg;base64,\(jpegData.base64EncodedString())"
+                var metadata = note.diaryMetadata
+                let index = metadata.photos.count
+                metadata.photos.append(source)
+                diaryImages["\(id)#photo#\(index)"] = jpegData
+                if index == 0 { diaryImages[id] = jpegData }
                 try await Task.sleep(for: .milliseconds(200))
-                updateNote(id: id, content: note.content + "\n<p><img src=\"\(source)\"></p>")
-                editRevisions.removeValue(forKey: id)
+                updateDiaryMetadata(id: id, metadata: metadata)
             } else {
                 diarySaveTasks[id]?.cancel()
                 await saveNote(id: id)
@@ -380,7 +432,8 @@ final class LibraryStore {
                 let saved = try await api.addPhoto(to: current, jpegData: jpegData, session: session)
                 replace(saved)
                 diaryImages.removeValue(forKey: id)
-                await loadDiaryImage(noteID: id)
+                diaryImages = diaryImages.filter { !$0.key.hasPrefix("\(id)#photo#") }
+                await loadDiaryPhotos(noteID: id)
             }
             syncState = .saved(.now)
             persistCache()

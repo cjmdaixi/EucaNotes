@@ -127,7 +127,10 @@ struct NoteEditorView: View {
             .presentationDetents([.medium])
         }
         .task(id: noteID) {
-            if diaryMode { await store.loadNote(id: noteID) }
+            if diaryMode {
+                await store.loadNote(id: noteID)
+                store.migrateDiaryPhotos(noteID: noteID)
+            }
             title = store.note(id: noteID)?.title ?? ""
         }
         .onDisappear {

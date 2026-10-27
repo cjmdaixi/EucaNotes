@@ -6,6 +6,21 @@ struct DiaryMetadata: Codable, Equatable, Sendable {
     var weather = ""
     var location = ""
     var favorite = false
+    var photos: [String] = []
+
+    private enum CodingKeys: String, CodingKey { case headline, mood, weather, location, favorite, photos }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        headline = try container.decodeIfPresent(String.self, forKey: .headline) ?? ""
+        mood = try container.decodeIfPresent(String.self, forKey: .mood) ?? ""
+        weather = try container.decodeIfPresent(String.self, forKey: .weather) ?? ""
+        location = try container.decodeIfPresent(String.self, forKey: .location) ?? ""
+        favorite = try container.decodeIfPresent(Bool.self, forKey: .favorite) ?? false
+        photos = try container.decodeIfPresent([String].self, forKey: .photos) ?? []
+    }
 }
 
 extension DiaryText {

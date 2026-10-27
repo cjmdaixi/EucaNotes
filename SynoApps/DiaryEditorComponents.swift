@@ -8,45 +8,49 @@ struct DiaryPhotoHeader: View {
     @State private var isUploading = false
 
     var body: some View {
-        PhotosPicker(selection: $selection, matching: .images, photoLibrary: .shared()) {
-            ZStack {
-                Color(uiColor: .systemGray5)
-                if let data = store.diaryImages[note.id], let image = UIImage(data: data) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
+        let photos = store.diaryPhotos(noteID: note.id)
+        ZStack {
+            Color(uiColor: .systemGray5)
+            if !photos.isEmpty {
+                TabView {
+                    ForEach(Array(photos.enumerated()), id: \.offset) { _, data in
+                        if let image = UIImage(data: data) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                        }
+                    }
                 }
-                if isUploading {
-                    Color.black.opacity(0.2)
-                    ProgressView().tint(.white)
-                } else {
-                    Image(systemName: store.diaryImages[note.id] == nil ? "plus" : "photo.badge.plus")
+                .tabViewStyle(.page(indexDisplayMode: photos.count > 1 ? .automatic : .never))
+            }
+            if isUploading {
+                Color.black.opacity(0.2)
+                ProgressView().tint(.white)
+            } else {
+                PhotosPicker(selection: $selection, matching: .images, photoLibrary: .shared()) {
+                    Image(systemName: photos.isEmpty ? "plus" : "photo.badge.plus")
                         .font(.system(size: 38, weight: .light))
                         .foregroundStyle(.white)
                         .frame(width: 82, height: 82)
                         .background(.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 4))
                 }
+                .buttonStyle(.plain)
+                .disabled(note.isInTrash)
+                .accessibilityLabel(photos.isEmpty ? "添加照片" : "添加更多照片")
+                .accessibilityIdentifier("diary-photo-picker")
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 286)
-            .clipped()
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .disabled(note.isInTrash || isUploading)
-        .accessibilityLabel(store.diaryImages[note.id] == nil ? "添加照片" : "更换照片")
-        .accessibilityIdentifier("diary-photo-picker")
-        .task(id: note.id) { await store.loadDiaryImage(noteID: note.id) }
+        .frame(maxWidth: .infinity)
+        .frame(height: 286)
+        .clipped()
+        .task(id: note.id) { await store.loadDiaryPhotos(noteID: note.id) }
         .onChange(of: selection) { _, item in
             guard let item else { return }
             isUploading = true
             Task {
                 defer { isUploading = false; selection = nil }
                 guard let data = try? await item.loadTransferable(type: Data.self),
-                      let jpeg = Self.jpegData(from: data) else {
-                    isUploading = false
-                    return
-                }
+                      let jpeg = Self.jpegData(from: data) else { return }
                 await store.addPhoto(id: note.id, jpegData: jpeg)
             }
         }

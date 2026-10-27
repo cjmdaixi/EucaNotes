@@ -43,6 +43,10 @@ enum DiaryText {
     }
 
     static func imageSource(in html: String, after marker: String? = nil) -> String? {
+        imageSources(in: html, after: marker).first
+    }
+
+    static func imageSources(in html: String, after marker: String? = nil) -> [String] {
         let source: String
         if let marker, let range = html.range(of: marker) {
             source = String(html[range.upperBound...])
@@ -51,6 +55,7 @@ enum DiaryText {
         }
         let expression = try? NSRegularExpression(pattern: "<img[^>]+>")
         let matches = expression?.matches(in: source, range: NSRange(source.startIndex..., in: source)) ?? []
+        var results: [String] = []
         for match in matches {
             guard let img = Range(match.range, in: source) else { continue }
             let tag = source[img]
@@ -62,9 +67,15 @@ enum DiaryText {
                 .replacingOccurrences(of: "&amp;", with: "&")
                 .replacingOccurrences(of: "&quot;", with: "\"")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !result.isEmpty { return result }
+            if !result.isEmpty { results.append(result) }
         }
-        return nil
+        return results
+    }
+
+    static func removingImages(in html: String) -> String {
+        guard let expression = try? NSRegularExpression(pattern: "<img[^>]+>") else { return html }
+        let range = NSRange(html.startIndex..., in: html)
+        return expression.stringByReplacingMatches(in: html, range: range, withTemplate: "")
     }
 }
 
