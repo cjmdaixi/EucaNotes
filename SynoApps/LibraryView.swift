@@ -113,7 +113,7 @@ private struct MonthCardsView: View {
                     Spacer()
                 } else {
                     let cardWidth = min(330, proxy.size.width * 0.72)
-                    let cardHeight = min(510, proxy.size.height * 0.61)
+                    let cardHeight = min(510, UIScreen.main.bounds.height * 0.47)
                     MonthCarouselView(
                         months: months,
                         contentRevision: store.notes.map(\.modifiedAt),
@@ -361,7 +361,7 @@ private final class MonthHostingCell: UICollectionViewCell {
             if showCalendar {
                 MonthCalendarCard(month: month, path: path)
             } else {
-                MonthCard(month: month, count: count, path: path)
+                MonthCard(month: month, size: size, count: count, path: path)
             }
         }
         .environment(store)
@@ -373,6 +373,7 @@ private final class MonthHostingCell: UICollectionViewCell {
 private struct MonthCard: View {
     @Environment(LibraryStore.self) private var store
     let month: DiaryMonth
+    let size: CGSize
     let count: Int
     @Binding var path: [DiaryRoute]
     @State private var showBackgroundEditor = false
@@ -416,7 +417,7 @@ private struct MonthCard: View {
             .foregroundStyle(.white)
             .padding(26)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 30).stroke(.white.opacity(0.22), lineWidth: 1))
         .shadow(color: .black.opacity(0.14), radius: 22, y: 10)
@@ -439,12 +440,16 @@ private struct MonthCard: View {
             if let info, let hex = DiaryText.backgroundColorHex(in: info.content) {
                 AppTheme.color(hex: hex)
             } else if let info, let data = store.diaryImages[info.id], let image = UIImage(data: data) {
-                Image(uiImage: image).resizable().scaledToFill()
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size.width, height: size.height)
+                    .clipped()
             } else {
                 Color(uiColor: .systemGray4)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: size.width, height: size.height)
         .clipped()
     }
 }
