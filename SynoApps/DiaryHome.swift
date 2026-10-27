@@ -23,12 +23,10 @@ struct HomeBottomBar: View {
             }
             HStack {
                 Button { section = .cards } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: "book.closed.fill")
-                        Text("月卡").font(.caption2)
-                    }
-                    .foregroundStyle(section == .cards ? AppTheme.accent : .secondary)
-                    .frame(maxWidth: .infinity)
+                    Image(systemName: "book.closed.fill")
+                        .font(.title3)
+                        .foregroundStyle(section == .cards ? AppTheme.accent : .secondary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .accessibilityLabel("月份卡片")
                 .accessibilityIdentifier("home-cards-tab")
@@ -44,12 +42,10 @@ struct HomeBottomBar: View {
                 .accessibilityLabel("写日记")
                 .accessibilityIdentifier("new-diary-button")
                 Button { section = .profile } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: "person.fill")
-                        Text("我的").font(.caption2)
-                    }
-                    .foregroundStyle(section == .profile ? AppTheme.accent : .secondary)
-                    .frame(maxWidth: .infinity)
+                    Image(systemName: "person.fill")
+                        .font(.title3)
+                        .foregroundStyle(section == .profile ? AppTheme.accent : .secondary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .accessibilityLabel("我的")
                 .accessibilityIdentifier("home-profile-tab")
@@ -58,7 +54,7 @@ struct HomeBottomBar: View {
             .padding(.top, 4)
             .padding(.bottom, 6)
         }
-        .background(.regularMaterial)
+        .background(AppTheme.paper.ignoresSafeArea())
     }
 }
 
