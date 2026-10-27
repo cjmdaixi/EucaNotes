@@ -479,13 +479,17 @@ final class LibraryStore {
     private static func previewPayload() -> LibraryPayload {
         let current = Notebook(id: "current-month", title: DiaryText.notebookTitle(), stack: diaryShelfName)
         let previous = Notebook(id: "previous-month", title: "2026年9月", stack: diaryShelfName)
+        let november = Notebook(id: "november", title: "2026年11月", stack: diaryShelfName)
+        let december = Notebook(id: "december", title: "2026年12月", stack: diaryShelfName)
         let notes = [
             Note(id: "current-info", title: "信息", content: "<p>背景照片：</p>", parentID: current.id),
             Note(id: "previous-info", title: "信息", content: "<p>背景照片：</p>", parentID: previous.id),
+            Note(id: "november-info", title: "信息", content: "<p>背景照片：</p>", parentID: november.id),
+            Note(id: "december-info", title: "信息", content: "<p>背景照片：</p>", parentID: december.id),
             Note(id: "today", title: DiaryText.noteTitle(), content: "<h2>把今天留在桉记</h2><p>傍晚的风穿过树叶，光落在窗台上。那些平常的小事，也值得认真记下来。</p>", parentID: current.id),
             Note(id: "earlier", title: "10月3日", content: "<p>沿着老街慢慢走，发现了一家安静的小店。读了几页书，喝完一杯热茶。</p>", parentID: current.id, modifiedAt: .now.addingTimeInterval(-3600 * 48)),
             Note(id: "autumn", title: "9月28日", content: "<p>九月末，天气终于有了一点秋天的意思。</p>", parentID: previous.id)
         ]
-        return LibraryPayload(notebooks: [current, previous], notes: notes, tags: [])
+        return LibraryPayload(notebooks: [previous, current, november, december], notes: notes, tags: [])
     }
 }

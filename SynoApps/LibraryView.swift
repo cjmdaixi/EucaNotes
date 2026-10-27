@@ -108,7 +108,7 @@ private struct MonthCardsView: View {
                     }
                     Spacer()
                 } else {
-                    let cardWidth = min(340, proxy.size.width * 0.78)
+                    let cardWidth = min(330, proxy.size.width * 0.72)
                     let cardHeight = min(510, proxy.size.height * 0.61)
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: 18) {
@@ -122,7 +122,7 @@ private struct MonthCardsView: View {
                                 }
                                 .frame(width: cardWidth, height: cardHeight)
                                 .scrollTransition(.interactive) { content, phase in
-                                    content.scaleEffect(phase.isIdentity ? 1 : 0.94).opacity(phase.isIdentity ? 1 : 0.7)
+                                    content.scaleEffect(phase.isIdentity ? 1 : 0.96).opacity(phase.isIdentity ? 1 : 0.48)
                                 }
                                 .onTapGesture { if !showCalendar { path.append(.month(month.id)) } }
                             }
@@ -130,7 +130,6 @@ private struct MonthCardsView: View {
                         .scrollTargetLayout()
                         .padding(.horizontal, (proxy.size.width - cardWidth) / 2)
                     }
-                    .scrollTargetBehavior(.viewAligned)
                     .scrollPosition(id: $selectedMonthID, anchor: .center)
                     .frame(height: cardHeight + 30)
                     .padding(.top, 8)
