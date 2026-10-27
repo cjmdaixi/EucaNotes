@@ -54,7 +54,6 @@ struct HomeBottomBar: View {
             .padding(.top, 4)
             .padding(.bottom, 6)
         }
-        .background(AppTheme.paper.ignoresSafeArea())
     }
 }
 

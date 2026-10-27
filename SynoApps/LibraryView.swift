@@ -18,6 +18,7 @@ struct LibraryView: View {
                     DiaryProfileView(path: $path)
                 }
             }
+            .padding(.bottom, 126)
             .navigationDestination(for: DiaryRoute.self) { route in
                 switch route {
                 case .month(let id): DiaryListView(monthID: id, path: $path)
@@ -25,10 +26,11 @@ struct LibraryView: View {
                 case .search: DiarySearchView(path: $path)
                 }
             }
-            .safeAreaInset(edge: .bottom) {
+            .overlay(alignment: .bottom) {
                 HomeBottomBar(section: $section, showCalendar: $showCalendar, isCreating: isCreating, createAction: createDiary)
             }
         }
+        .background(AppTheme.paper.ignoresSafeArea())
         .tint(AppTheme.accent)
         .task(id: store.session?.sid) {
             if !store.isDemo { await store.sync() }
@@ -122,8 +124,9 @@ private struct MonthCardsView: View {
                         cardWidth: cardWidth,
                         cardHeight: cardHeight
                     )
-                    .frame(height: cardHeight + 30)
+                    .frame(height: cardHeight + 52)
                     .padding(.top, 8)
+                    .padding(.bottom, -22)
                     .accessibilityIdentifier("month-card-carousel")
                 }
 
@@ -181,6 +184,7 @@ private struct MonthCarouselView: UIViewRepresentable {
         view.dataSource = context.coordinator
         view.delegate = context.coordinator
         view.backgroundColor = .clear
+        view.clipsToBounds = false
         view.showsHorizontalScrollIndicator = false
         view.decelerationRate = .fast
         view.contentInsetAdjustmentBehavior = .never
