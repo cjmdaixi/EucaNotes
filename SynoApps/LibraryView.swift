@@ -188,7 +188,7 @@ private struct MonthCarouselView: UIViewRepresentable {
         view.backgroundColor = .clear
         view.clipsToBounds = false
         view.showsHorizontalScrollIndicator = false
-        view.decelerationRate = .fast
+        view.decelerationRate = .normal
         view.contentInsetAdjustmentBehavior = .never
         view.accessibilityIdentifier = "month-card-carousel"
         return view
@@ -290,9 +290,10 @@ private struct MonthCarouselView: UIViewRepresentable {
             let peek = max(0, (scrollView.bounds.width - cardSize.width) / 2)
             let visibleWidth = peek + abs(delta)
             var targetIndex = dragStartIndex
-            if visibleWidth > cardSize.width * 2 / 3 {
-                let direction = delta > 0 ? 1 : -1
-                let steps = max(1, Int(visibleWidth / cardSize.width))
+            let isFastSwipe = abs(velocity.x) > 0.35
+            if visibleWidth > cardSize.width * 2 / 3 || isFastSwipe {
+                let direction = abs(velocity.x) > 0.1 ? (velocity.x > 0 ? 1 : -1) : (delta > 0 ? 1 : -1)
+                let steps = isFastSwipe ? (abs(velocity.x) > 2.5 ? 2 : 1) : max(1, Int(visibleWidth / cardSize.width))
                 targetIndex = min(max(0, dragStartIndex + direction * steps), parent.months.count - 1)
             }
             targetContentOffset.pointee.x = CGFloat(targetIndex) * step

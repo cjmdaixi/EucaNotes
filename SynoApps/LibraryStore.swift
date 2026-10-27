@@ -303,6 +303,10 @@ final class LibraryStore {
             }
             syncState = .saved(.now)
             persistCache()
+        } catch is CancellationError {
+            return
+        } catch let error as URLError where error.code == .cancelled {
+            return
         } catch {
             syncState = .failed(error.localizedDescription)
             presentError(error.localizedDescription)
@@ -366,6 +370,10 @@ final class LibraryStore {
             syncState = .saved(.now)
             persistCache()
             return note.id
+        } catch is CancellationError {
+            return nil
+        } catch let error as URLError where error.code == .cancelled {
+            return nil
         } catch {
             syncState = .failed(error.localizedDescription)
             presentError(error.localizedDescription)
@@ -451,30 +459,41 @@ final class LibraryStore {
     }
 
     func addPhoto(id: String, jpegData: Data) async {
-        guard let session, let note = note(id: id) else { return }
+        await addPhotos(id: id, images: [jpegData])
+    }
+
+    func addPhotos(id: String, images: [Data]) async {
+        guard let session, let note = note(id: id), !images.isEmpty else { return }
         syncState = .syncing
         do {
             if session.isDemo {
-                let source = "data:image/jpeg;base64,\(jpegData.base64EncodedString())"
                 var metadata = note.diaryMetadata
-                let index = metadata.photos.count
-                metadata.photos.append(source)
-                diaryImages["\(id)#photo#\(index)"] = jpegData
-                if index == 0 { diaryImages[id] = jpegData }
+                for jpegData in images {
+                    let index = metadata.photos.count
+                    metadata.photos.append("data:image/jpeg;base64,\(jpegData.base64EncodedString())")
+                    diaryImages["\(id)#photo#\(index)"] = jpegData
+                    if index == 0 { diaryImages[id] = jpegData }
+                }
                 try await Task.sleep(for: .milliseconds(200))
                 updateDiaryMetadata(id: id, metadata: metadata)
             } else {
                 diarySaveTasks[id]?.cancel()
                 await saveNote(id: id)
-                guard editRevisions[id] == nil, let current = self.note(id: id) else { return }
-                let saved = try await api.addPhoto(to: current, jpegData: jpegData, session: session)
-                replace(saved)
+                guard editRevisions[id] == nil, var current = self.note(id: id) else { return }
+                for jpegData in images {
+                    current = try await api.addPhoto(to: current, jpegData: jpegData, session: session)
+                    replace(current)
+                }
                 diaryImages.removeValue(forKey: id)
                 diaryImages = diaryImages.filter { !$0.key.hasPrefix("\(id)#photo#") }
                 await loadDiaryPhotos(noteID: id)
             }
             syncState = .saved(.now)
             persistCache()
+        } catch is CancellationError {
+            return
+        } catch let error as URLError where error.code == .cancelled {
+            return
         } catch {
             syncState = .failed(error.localizedDescription)
             presentError("照片保存失败：\(error.localizedDescription)")

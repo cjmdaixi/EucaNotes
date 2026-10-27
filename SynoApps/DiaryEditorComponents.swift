@@ -4,7 +4,7 @@ import PhotosUI
 struct DiaryPhotoHeader: View {
     @Environment(LibraryStore.self) private var store
     let note: Note
-    @State private var selection: PhotosPickerItem?
+    @State private var selection: [PhotosPickerItem] = []
     @State private var isUploading = false
 
     var body: some View {
@@ -27,7 +27,7 @@ struct DiaryPhotoHeader: View {
                 Color.black.opacity(0.2)
                 ProgressView().tint(.white)
             } else {
-                PhotosPicker(selection: $selection, matching: .images, photoLibrary: .shared()) {
+                PhotosPicker(selection: $selection, maxSelectionCount: 9, matching: .images, photoLibrary: .shared()) {
                     Image(systemName: photos.isEmpty ? "plus" : "photo.badge.plus")
                         .font(.system(size: 38, weight: .light))
                         .foregroundStyle(.white)
@@ -44,14 +44,19 @@ struct DiaryPhotoHeader: View {
         .frame(height: 286)
         .clipped()
         .task(id: note.id) { await store.loadDiaryPhotos(noteID: note.id) }
-        .onChange(of: selection) { _, item in
-            guard let item else { return }
+        .onChange(of: selection) { _, items in
+            guard !items.isEmpty else { return }
             isUploading = true
             Task {
-                defer { isUploading = false; selection = nil }
-                guard let data = try? await item.loadTransferable(type: Data.self),
-                      let jpeg = DiaryImageCompression.jpegData(from: data) else { return }
-                await store.addPhoto(id: note.id, jpegData: jpeg)
+                defer { isUploading = false; selection = [] }
+                var images: [Data] = []
+                for item in items {
+                    guard let data = try? await item.loadTransferable(type: Data.self),
+                          let jpeg = DiaryImageCompression.jpegData(from: data) else { continue }
+                    images.append(jpeg)
+                }
+                guard !images.isEmpty else { return }
+                await store.addPhotos(id: note.id, images: images)
             }
         }
     }
