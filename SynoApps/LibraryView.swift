@@ -118,7 +118,11 @@ private struct MonthCardsView: View {
                     let cardHeight = min(510, UIScreen.main.bounds.height * 0.47)
                     MonthCarouselView(
                         months: months,
-                        contentRevision: store.notes.map(\.modifiedAt),
+                        contentRevision: store.diaryMonths.map { month in
+                            let infoDate = store.infoNote(monthID: month.id)?.modifiedAt.timeIntervalSince1970 ?? 0
+                            let days = store.diaryNotes(monthID: month.id).compactMap { DiaryText.day(from: $0.title) }.sorted()
+                            return "\(month.id)-\(infoDate)-\(days)"
+                        },
                         selectedMonthID: $selectedMonthID,
                         showCalendar: showCalendar,
                         path: $path,
@@ -164,7 +168,7 @@ private struct MonthCardsView: View {
 
 private struct MonthCarouselView: UIViewRepresentable {
     let months: [DiaryMonth]
-    let contentRevision: [Date]
+    let contentRevision: [String]
     @Binding var selectedMonthID: String?
     let showCalendar: Bool
     @Binding var path: [DiaryRoute]
@@ -214,7 +218,7 @@ private struct MonthCarouselView: UIViewRepresentable {
     final class Coordinator: NSObject, UICollectionViewDataSource, UICollectionViewDelegate {
         var parent: MonthCarouselView
         private var monthIDs: [String] = []
-        private var contentRevision: [Date] = []
+        private var contentRevision: [String] = []
         private var cardSize: CGSize = .zero
         private var dragStartIndex = 0
         private var lastSelected: String?
@@ -233,19 +237,19 @@ private struct MonthCarouselView: UIViewRepresentable {
                 contentRevision = parent.contentRevision
                 cardSize = size
                 collectionView.reloadData()
-            }
-            for case let cell as MonthHostingCell in collectionView.visibleCells {
-                guard let indexPath = collectionView.indexPath(for: cell), parent.months.indices.contains(indexPath.item) else { continue }
-                let month = parent.months[indexPath.item]
-                cell.configure(
-                    month: month,
-                    size: cardSize,
-                    count: parent.store.diaryNotes(monthID: month.id).count,
-                    info: parent.store.infoNote(monthID: month.id),
-                    showCalendar: parent.showCalendar,
-                    path: parent.$path,
-                    store: parent.store
-                )
+                for case let cell as MonthHostingCell in collectionView.visibleCells {
+                    guard let indexPath = collectionView.indexPath(for: cell), parent.months.indices.contains(indexPath.item) else { continue }
+                    let month = parent.months[indexPath.item]
+                    cell.configure(
+                        month: month,
+                        size: cardSize,
+                        count: parent.store.diaryNotes(monthID: month.id).count,
+                        info: parent.store.infoNote(monthID: month.id),
+                        showCalendar: parent.showCalendar,
+                        path: parent.$path,
+                        store: parent.store
+                    )
+                }
             }
             if needsInitialScroll || lastSelected != parent.selectedMonthID {
                 needsInitialScroll = false

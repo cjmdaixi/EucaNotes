@@ -5,10 +5,11 @@ struct DiaryPhotoHeader: View {
     @Environment(LibraryStore.self) private var store
     let note: Note
     @State private var selection: [PhotosPickerItem] = []
+    @State private var pendingPhotos: [Data] = []
     @State private var isUploading = false
 
     var body: some View {
-        let photos = store.diaryPhotos(noteID: note.id)
+        let photos = pendingPhotos.isEmpty ? store.diaryPhotos(noteID: note.id) : pendingPhotos
         ZStack {
             Color(uiColor: .systemGray5)
             if !photos.isEmpty {
@@ -25,7 +26,12 @@ struct DiaryPhotoHeader: View {
             }
             if isUploading {
                 Color.black.opacity(0.2)
-                ProgressView().tint(.white)
+                VStack(spacing: 10) {
+                    ProgressView().tint(.white)
+                    Text("正在上传 \(pendingPhotos.count) 张照片")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white)
+                }
             } else {
                 PhotosPicker(selection: $selection, maxSelectionCount: 9, matching: .images, photoLibrary: .shared()) {
                     Image(systemName: photos.isEmpty ? "plus" : "photo.badge.plus")
@@ -48,11 +54,14 @@ struct DiaryPhotoHeader: View {
             guard !items.isEmpty else { return }
             isUploading = true
             Task {
-                defer { isUploading = false; selection = [] }
+                defer { isUploading = false; selection = []; pendingPhotos = [] }
                 var images: [Data] = []
                 for item in items {
-                    guard let data = try? await item.loadTransferable(type: Data.self),
-                          let jpeg = DiaryImageCompression.jpegData(from: data) else { continue }
+                    guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+                    let jpeg = await Task.detached(priority: .userInitiated) {
+                        DiaryImageCompression.jpegData(from: data)
+                    }.value
+                    guard let jpeg else { continue }
                     images.append(jpeg)
                 }
                 guard !images.isEmpty else {
@@ -60,6 +69,7 @@ struct DiaryPhotoHeader: View {
                     store.showError = true
                     return
                 }
+                pendingPhotos = images
                 await store.addPhotos(id: note.id, images: images)
             }
         }
