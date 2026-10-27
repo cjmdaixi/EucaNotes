@@ -55,6 +55,23 @@ extension DiaryText {
               let end = html[marker.upperBound...].range(of: " -->") else { return html }
         return html.replacingCharacters(in: marker.lowerBound..<end.upperBound, with: "")
     }
+
+    static func backgroundColorHex(in html: String) -> String? {
+        guard let range = html.range(of: "背景纯色：(#[0-9A-Fa-f]{6})", options: .regularExpression),
+              let hex = html[range].split(separator: "：").last else { return nil }
+        return String(hex)
+    }
+
+    static func removingBackgroundColor(in html: String) -> String {
+        html.replacingOccurrences(of: "<p>背景纯色：#[0-9A-Fa-f]{6}</p>\\n?", with: "", options: .regularExpression)
+    }
+
+    static func settingBackgroundColor(in html: String, hex: String?) -> String {
+        let stripped = removingBackgroundColor(in: html)
+        guard let hex else { return stripped }
+        let normalizedHex = hex.hasPrefix("#") ? hex : "#\(hex)"
+        return "<p>背景纯色：\(normalizedHex)</p>\n" + stripped
+    }
 }
 
 extension Note {

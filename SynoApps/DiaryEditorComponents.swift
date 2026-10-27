@@ -50,13 +50,15 @@ struct DiaryPhotoHeader: View {
             Task {
                 defer { isUploading = false; selection = nil }
                 guard let data = try? await item.loadTransferable(type: Data.self),
-                      let jpeg = Self.jpegData(from: data) else { return }
+                      let jpeg = DiaryImageCompression.jpegData(from: data) else { return }
                 await store.addPhoto(id: note.id, jpegData: jpeg)
             }
         }
     }
+}
 
-    private static func jpegData(from data: Data) -> Data? {
+enum DiaryImageCompression {
+    static func jpegData(from data: Data) -> Data? {
         guard let image = UIImage(data: data) else { return nil }
         let maximum: CGFloat = 1600
         let scale = min(1, maximum / max(image.size.width, image.size.height))

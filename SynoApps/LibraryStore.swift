@@ -412,6 +412,44 @@ final class LibraryStore {
         }
     }
 
+    func setMonthBackgroundColor(monthID: String, hex: String?) async {
+        guard var info = infoNote(monthID: monthID) else {
+            presentError("未找到这个月份的信息记录。")
+            return
+        }
+        info.content = DiaryText.settingBackgroundColor(in: info.content, hex: hex)
+        updateNote(id: info.id, content: info.content)
+        if !isDemo { await saveNote(id: info.id) }
+        syncState = .saved(.now)
+        persistCache()
+    }
+
+    func setMonthBackgroundPhoto(monthID: String, jpegData: Data) async {
+        guard let session, let info = infoNote(monthID: monthID) else {
+            presentError("未找到这个月份的信息记录。")
+            return
+        }
+        syncState = .syncing
+        do {
+            if session.isDemo {
+                let source = "data:image/jpeg;base64,\(jpegData.base64EncodedString())"
+                var content = DiaryText.removingImages(in: DiaryText.removingBackgroundColor(in: info.content))
+                if !content.contains("背景照片：") { content = "<p>背景照片：</p>" + content }
+                updateNote(id: info.id, content: content + "\n<p><img src=\"\(source)\"></p>")
+                diaryImages[info.id] = jpegData
+            } else {
+                let saved = try await api.setMonthBackgroundPhoto(note: info, jpegData: jpegData, session: session)
+                replace(saved)
+                diaryImages[info.id] = jpegData
+            }
+            syncState = .saved(.now)
+            persistCache()
+        } catch {
+            syncState = .failed(error.localizedDescription)
+            presentError("背景照片保存失败：\(error.localizedDescription)")
+        }
+    }
+
     func addPhoto(id: String, jpegData: Data) async {
         guard let session, let note = note(id: id) else { return }
         syncState = .syncing

@@ -7,6 +7,15 @@ enum AppTheme {
     static let paper = Color(uiColor: .systemBackground)
     static let secondaryPaper = Color(uiColor: .secondarySystemBackground)
     static let subtleText = Color(uiColor: .secondaryLabel)
+
+    static func color(hex: String) -> Color {
+        let value = UInt64(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0
+        return Color(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255
+        )
+    }
 }
 
 struct SynoMark: View {

@@ -213,6 +213,25 @@ nonisolated struct SynologyAPI: Sendable {
         return try await getNote(id: note.id, session: session)
     }
 
+    func setMonthBackgroundPhoto(note: Note, jpegData: Data, session: SynologySession) async throws -> Note {
+        let reference = Data(UUID().uuidString.utf8).base64EncodedString()
+        let fieldName = "background_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        let embedded = "data:image/jpeg;base64," + jpegData.base64EncodedString()
+        var content = DiaryText.removingImages(in: DiaryText.removingBackgroundColor(in: note.content))
+        if !content.contains("背景照片：") { content = "<p>背景照片：</p>" + content }
+        let html = content + "\n<p><img ref=\"\(reference)\" src=\"\(embedded)\"></p>"
+        let fields: [String: JSONValue] = [
+            "object_id": .string(note.id),
+            "title": .string(note.title),
+            "content": .string(html),
+            "brief": .string(note.preview),
+            "commit_msg": .object(["device": .string("Euca Diary for iOS"), "listable": .bool(false)]),
+            "attachment": .array([.object(["action": .string("create"), "name": .string(fieldName), "format": .string("raw"), "ref": .string(reference), "rotate": .bool(true)])])
+        ]
+        try await multipartRequest(session: session, fields: fields, fileField: fieldName, fileData: jpegData)
+        return try await getNote(id: note.id, session: session)
+    }
+
     private func multipartRequest(session: SynologySession, fields: [String: JSONValue], fileField: String, fileData: Data) async throws {
         guard var components = URLComponents(string: session.baseURL + "/webapi/entry.cgi") else { throw SynologyError.invalidServer }
         components.queryItems = [

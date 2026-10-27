@@ -114,6 +114,7 @@ private struct MonthCardsView: View {
                     let cardHeight = min(510, proxy.size.height * 0.61)
                     MonthCarouselView(
                         months: months,
+                        contentRevision: store.notes.map(\.modifiedAt),
                         selectedMonthID: $selectedMonthID,
                         showCalendar: showCalendar,
                         path: $path,
@@ -158,6 +159,7 @@ private struct MonthCardsView: View {
 
 private struct MonthCarouselView: UIViewRepresentable {
     let months: [DiaryMonth]
+    let contentRevision: [Date]
     @Binding var selectedMonthID: String?
     let showCalendar: Bool
     @Binding var path: [DiaryRoute]
@@ -200,6 +202,7 @@ private struct MonthCarouselView: UIViewRepresentable {
     final class Coordinator: NSObject, UICollectionViewDataSource, UICollectionViewDelegate {
         var parent: MonthCarouselView
         private var monthIDs: [String] = []
+        private var contentRevision: [Date] = []
         private var dragStartIndex = 0
         private var lastSelected: String?
         private var needsInitialScroll = true
@@ -211,10 +214,11 @@ private struct MonthCarouselView: UIViewRepresentable {
 
         func update(_ collectionView: UICollectionView) {
             let ids = parent.months.map(\.id)
-            if ids != monthIDs {
+            if ids != monthIDs || contentRevision != parent.contentRevision {
+                needsInitialScroll = ids != monthIDs || needsInitialScroll
                 monthIDs = ids
+                contentRevision = parent.contentRevision
                 collectionView.reloadData()
-                needsInitialScroll = true
             }
             if needsInitialScroll || lastSelected != parent.selectedMonthID {
                 needsInitialScroll = false
@@ -326,12 +330,12 @@ private final class MonthHostingCell: UICollectionViewCell {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     @MainActor
-    func configure(month: DiaryMonth, count: Int, info: Note?, showCalendar: Bool, path: Binding<[DiaryRoute]>, store: LibraryStore) {
+    func configure(month: DiaryMonth, count: Int, info _: Note?, showCalendar: Bool, path: Binding<[DiaryRoute]>, store: LibraryStore) {
         let content = Group {
             if showCalendar {
                 MonthCalendarCard(month: month, path: path)
             } else {
-                MonthCard(month: month, count: count, info: info, path: path)
+                MonthCard(month: month, count: count, path: path)
             }
         }
         .environment(store)
@@ -343,9 +347,10 @@ private struct MonthCard: View {
     @Environment(LibraryStore.self) private var store
     let month: DiaryMonth
     let count: Int
-    let info: Note?
     @Binding var path: [DiaryRoute]
+    @State private var showBackgroundEditor = false
 
+    private var info: Note? { store.infoNote(monthID: month.id) }
     private var writtenDays: Int {
         Set(store.diaryNotes(monthID: month.id).compactMap { DiaryText.day(from: $0.title) }).count
     }
@@ -370,15 +375,14 @@ private struct MonthCard: View {
                     Text("\(writtenDays) / \(daysInMonth)")
                     Spacer()
                     if store.loadingDiaryImageIDs.contains(info?.id ?? "") { ProgressView().tint(.white) }
-                    Menu {
-                        Button("查看本月日记") { path.append(.month(month.id)) }
-                        Button("立即同步") { Task { await store.sync() } }
-                    } label: {
+                    Button { showBackgroundEditor = true } label: {
                         Image(systemName: "ellipsis")
                             .frame(width: 44, height: 32)
                             .contentShape(Rectangle())
                     }
-                    .accessibilityLabel("月份菜单")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("设置月份背景")
+                    .accessibilityIdentifier("month-background-button")
                 }
                 .font(.subheadline.weight(.semibold))
             }
@@ -398,19 +402,24 @@ private struct MonthCard: View {
             guard let info else { return }
             await store.loadDiaryImage(noteID: info.id, backgroundOnly: true)
         }
+        .sheet(isPresented: $showBackgroundEditor) {
+            MonthBackgroundEditor(month: month)
+        }
     }
 
     @ViewBuilder private var background: some View {
         Group {
-            if let info, let data = store.diaryImages[info.id], let image = UIImage(data: data) {
+            if let info, let hex = DiaryText.backgroundColorHex(in: info.content) {
+                AppTheme.color(hex: hex)
+            } else if let info, let data = store.diaryImages[info.id], let image = UIImage(data: data) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Color(uiColor: .systemGray4)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .clipped()
-}
+        .clipped()
+    }
 }
 
 private struct DiaryListView: View {
