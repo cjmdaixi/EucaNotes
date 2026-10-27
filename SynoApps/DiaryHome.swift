@@ -235,7 +235,7 @@ struct SearchButton: View {
             Image(systemName: "magnifyingglass")
                 .font(.title3.weight(.medium))
                 .frame(width: 44, height: 44)
-                .background(.regularMaterial, in: Circle())
+                .contentShape(Rectangle())
         }
         .accessibilityLabel("搜索日记")
         .accessibilityIdentifier("diary-search-button")

@@ -68,11 +68,13 @@ private struct MonthCardsView: View {
     var body: some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
-                HStack {
+                HStack(spacing: 14) {
+                    Image(systemName: "cloud")
+                        .font(.system(size: 32, weight: .light))
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("桉记")
-                            .font(.system(size: 30, weight: .bold, design: .serif))
-                        Text(Date.now.formatted(.dateTime.year().month().day().weekday(.wide).locale(Locale(identifier: "zh_CN"))))
+                        Text(Date.now.formatted(.dateTime.year().month().day().locale(Locale(identifier: "zh_CN"))))
+                            .font(.headline)
+                        Text(Date.now.formatted(.dateTime.weekday(.wide).locale(Locale(identifier: "zh_CN"))))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -117,12 +119,12 @@ private struct MonthCardsView: View {
                                     if showCalendar {
                                         MonthCalendarCard(month: month, path: $path)
                                     } else {
-                                        MonthCard(month: month, count: store.diaryNotes(monthID: month.id).count, info: store.infoNote(monthID: month.id))
+                                        MonthCard(month: month, count: store.diaryNotes(monthID: month.id).count, info: store.infoNote(monthID: month.id), path: $path)
                                     }
                                 }
                                 .frame(width: cardWidth, height: cardHeight)
                                 .scrollTransition(.interactive) { content, phase in
-                                    content.scaleEffect(phase.isIdentity ? 1 : 0.96).opacity(phase.isIdentity ? 1 : 0.48)
+                                    content.opacity(phase.isIdentity ? 1 : 0.48)
                                 }
                                 .onTapGesture { if !showCalendar { path.append(.month(month.id)) } }
                             }
@@ -134,13 +136,6 @@ private struct MonthCardsView: View {
                     .frame(height: cardHeight + 30)
                     .padding(.top, 8)
                     .accessibilityIdentifier("month-card-carousel")
-                }
-
-                if let selected = months.first(where: { $0.id == selectedMonthID }) ?? months.first {
-                    Text("\(selected.yearTitle) · \(selected.monthTitle)")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 4)
                 }
 
             }
@@ -177,6 +172,15 @@ private struct MonthCard: View {
     let month: DiaryMonth
     let count: Int
     let info: Note?
+    @Binding var path: [DiaryRoute]
+
+    private var writtenDays: Int {
+        Set(store.diaryNotes(monthID: month.id).compactMap { DiaryText.day(from: $0.title) }).count
+    }
+    private var daysInMonth: Int {
+        let first = DiaryText.calendar.date(from: DateComponents(year: month.year, month: month.month)) ?? .now
+        return DiaryText.calendar.range(of: .day, in: .month, for: first)?.count ?? 30
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -187,11 +191,22 @@ private struct MonthCard: View {
                     .font(.system(size: 52, weight: .bold, design: .serif))
                     .shadow(color: .black.opacity(0.25), radius: 5, y: 2)
                 Spacer()
-                HStack {
-                    Label("\(count) 篇日记", systemImage: "book.closed.fill")
+                HStack(spacing: 9) {
+                    Capsule()
+                        .fill(.white.opacity(0.62))
+                        .frame(width: 62, height: 5)
+                    Text("\(writtenDays) / \(daysInMonth)")
                     Spacer()
                     if store.loadingDiaryImageIDs.contains(info?.id ?? "") { ProgressView().tint(.white) }
-                    Image(systemName: "chevron.right.circle.fill")
+                    Menu {
+                        Button("查看本月日记") { path.append(.month(month.id)) }
+                        Button("立即同步") { Task { await store.sync() } }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 44, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("月份菜单")
                 }
                 .font(.subheadline.weight(.semibold))
             }
@@ -216,15 +231,7 @@ private struct MonthCard: View {
         if let info, let data = store.diaryImages[info.id], let image = UIImage(data: data) {
             Image(uiImage: image).resizable().scaledToFill()
         } else {
-            ZStack {
-                LinearGradient(colors: [Color(red: 0.28, green: 0.42, blue: 0.36), Color(red: 0.12, green: 0.23, blue: 0.23)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                Circle().fill(.white.opacity(0.08)).frame(width: 300).offset(x: 100, y: -150)
-                Image(systemName: "leaf.fill")
-                    .font(.system(size: 180, weight: .thin))
-                    .foregroundStyle(.white.opacity(0.1))
-                    .rotationEffect(.degrees(-25))
-                    .offset(x: 45, y: 70)
-            }
+            Color(uiColor: .systemGray4)
         }
     }
 }
