@@ -3,17 +3,31 @@ import SwiftUI
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var store
     @State private var path: [DiaryRoute] = []
+    @State private var section: DiaryHomeSection = .cards
+    @State private var showCalendar = false
+    @State private var selectedMonthID: String?
+    @State private var isCreating = false
 
     var body: some View {
         @Bindable var store = store
         NavigationStack(path: $path) {
-            MonthCardsView(path: $path)
-                .navigationDestination(for: DiaryRoute.self) { route in
-                    switch route {
-                    case .month(let id): DiaryListView(monthID: id, path: $path)
-                    case .note(let id): NoteEditorView(noteID: id, diaryMode: true)
-                    }
+            Group {
+                if section == .cards {
+                    MonthCardsView(path: $path, selectedMonthID: $selectedMonthID, showCalendar: $showCalendar)
+                } else {
+                    DiaryProfileView(path: $path)
                 }
+            }
+            .navigationDestination(for: DiaryRoute.self) { route in
+                switch route {
+                case .month(let id): DiaryListView(monthID: id, path: $path)
+                case .note(let id): NoteEditorView(noteID: id, diaryMode: true)
+                case .search: DiarySearchView(path: $path)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                HomeBottomBar(section: $section, showCalendar: $showCalendar, isCreating: isCreating, createAction: createDiary)
+            }
         }
         .tint(AppTheme.accent)
         .task(id: store.session?.sid) {
@@ -25,14 +39,29 @@ struct LibraryView: View {
             Text(store.errorMessage ?? "请稍后重试。")
         }
     }
+
+    private func createDiary() {
+        let now = Date.now
+        let year = DiaryText.calendar.component(.year, from: now)
+        let month = DiaryText.calendar.component(.month, from: now)
+        guard let target = store.diaryMonth(id: selectedMonthID ?? "") ?? store.diaryMonths.first(where: { $0.year == year && $0.month == month }) ?? store.diaryMonths.last else { return }
+        isCreating = true
+        Task {
+            if let id = await store.createDiary(monthID: target.id) {
+                path.append(.month(target.id))
+                path.append(.note(id))
+            }
+            isCreating = false
+        }
+    }
 }
 
 private struct MonthCardsView: View {
     @Environment(LibraryStore.self) private var store
     @Binding var path: [DiaryRoute]
-    @State private var selectedMonthID: String?
+    @Binding var selectedMonthID: String?
+    @Binding var showCalendar: Bool
     @State private var selectedYear = DiaryText.calendar.component(.year, from: .now)
-    @State private var isCreating = false
 
     private var months: [DiaryMonth] { store.diaryMonths.filter { $0.year == selectedYear } }
 
@@ -48,22 +77,7 @@ private struct MonthCardsView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Menu {
-                        Button { Task { await store.sync() } } label: {
-                            Label("立即同步", systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        .disabled(store.isSyncing)
-                        Divider()
-                        Button(role: .destructive) { Task { await store.signOut() } } label: {
-                            Label(store.isDemo ? "退出预览" : "退出登录", systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.title3.weight(.semibold))
-                            .frame(width: 44, height: 44)
-                            .background(.regularMaterial, in: Circle())
-                    }
-                    .accessibilityLabel("账户与同步")
+                    SearchButton(path: $path)
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
@@ -99,19 +113,25 @@ private struct MonthCardsView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: 18) {
                             ForEach(months) { month in
-                                MonthCard(month: month, count: store.diaryNotes(monthID: month.id).count, info: store.infoNote(monthID: month.id))
-                                    .frame(width: cardWidth, height: cardHeight)
-                                    .scrollTransition(.interactive) { content, phase in
-                                        content.scaleEffect(phase.isIdentity ? 1 : 0.94).opacity(phase.isIdentity ? 1 : 0.7)
+                                Group {
+                                    if showCalendar {
+                                        MonthCalendarCard(month: month, path: $path)
+                                    } else {
+                                        MonthCard(month: month, count: store.diaryNotes(monthID: month.id).count, info: store.infoNote(monthID: month.id))
                                     }
-                                    .onTapGesture { path.append(.month(month.id)) }
+                                }
+                                .frame(width: cardWidth, height: cardHeight)
+                                .scrollTransition(.interactive) { content, phase in
+                                    content.scaleEffect(phase.isIdentity ? 1 : 0.94).opacity(phase.isIdentity ? 1 : 0.7)
+                                }
+                                .onTapGesture { if !showCalendar { path.append(.month(month.id)) } }
                             }
                         }
                         .scrollTargetLayout()
                         .padding(.horizontal, (proxy.size.width - cardWidth) / 2)
                     }
                     .scrollTargetBehavior(.viewAligned)
-                    .scrollPosition(id: $selectedMonthID)
+                    .scrollPosition(id: $selectedMonthID, anchor: .center)
                     .frame(height: cardHeight + 30)
                     .padding(.top, 8)
                     .accessibilityIdentifier("month-card-carousel")
@@ -124,26 +144,6 @@ private struct MonthCardsView: View {
                         .padding(.top, 4)
                 }
 
-                Button {
-                    guard let month = months.first(where: { $0.id == selectedMonthID }) ?? months.first else { return }
-                    isCreating = true
-                    Task {
-                        if let id = await store.createDiary(monthID: month.id) { path.append(.month(month.id)); path.append(.note(id)) }
-                        isCreating = false
-                    }
-                } label: {
-                    Image(systemName: isCreating ? "progress.view" : "plus")
-                        .font(.system(size: 26, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 62, height: 62)
-                        .background(AppTheme.accent, in: Circle())
-                        .shadow(color: AppTheme.accent.opacity(0.28), radius: 16, y: 7)
-                }
-                .disabled(months.isEmpty || isCreating)
-                .accessibilityLabel("写日记")
-                .accessibilityIdentifier("new-diary-button")
-                .padding(.top, 22)
-                .padding(.bottom, 24)
             }
             .frame(maxWidth: 700)
             .frame(maxWidth: .infinity)

@@ -71,4 +71,5 @@ enum DiaryText {
 enum DiaryRoute: Hashable {
     case month(String)
     case note(String)
+    case search
 }

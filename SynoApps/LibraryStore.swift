@@ -268,7 +268,7 @@ final class LibraryStore {
         }
     }
 
-    func createDiary(monthID: String) async -> String? {
+    func createDiary(monthID: String, day requestedDay: Int? = nil) async -> String? {
         guard let session, diaryMonths.contains(where: { $0.id == monthID }) else { return nil }
         let title: String
         if let month = diaryMonth(id: monthID) {
@@ -278,7 +278,7 @@ final class LibraryStore {
             let currentDay = DiaryText.calendar.component(.day, from: now)
             let firstDay = DiaryText.calendar.date(from: DateComponents(year: month.year, month: month.month)) ?? now
             let dayRange = DiaryText.calendar.range(of: .day, in: .month, for: firstDay)?.count ?? 31
-            let day = (month.year == currentYear && month.month == currentMonth) ? currentDay : min(currentDay, dayRange)
+            let day = requestedDay ?? ((month.year == currentYear && month.month == currentMonth) ? currentDay : min(currentDay, dayRange))
             title = "\(month.month)月\(day)日"
         } else {
             title = DiaryText.noteTitle()

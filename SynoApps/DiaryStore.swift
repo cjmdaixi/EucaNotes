@@ -6,8 +6,13 @@ extension LibraryStore {
 
     var diaryMonths: [DiaryMonth] {
         notebooks.compactMap(DiaryMonth.parse).sorted {
-            ($0.year, $0.month) > ($1.year, $1.month)
+            ($0.year, $0.month) < ($1.year, $1.month)
         }
+    }
+
+    var allDiaryNotes: [Note] {
+        let monthIDs = Set(diaryMonths.map(\.id))
+        return notes.filter { monthIDs.contains($0.parentID) && $0.title != "信息" && !$0.isInTrash && !$0.isArchived }
     }
 
     func diaryMonth(id: String) -> DiaryMonth? {
