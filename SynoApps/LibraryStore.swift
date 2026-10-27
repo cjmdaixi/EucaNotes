@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 @MainActor
 @Observable
@@ -82,6 +83,13 @@ final class LibraryStore {
         let preview = Self.previewPayload()
         session = SynologySession(baseURL: "preview.local", sid: "preview", account: "预览账户", isDemo: true)
         apply(preview)
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1600, height: 1200))
+        diaryImages["november-info"] = renderer.jpegData(withCompressionQuality: 0.85) { context in
+            UIColor(red: 0.25, green: 0.48, blue: 0.39, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1600, height: 1200))
+            UIColor(red: 0.65, green: 0.75, blue: 0.58, alpha: 1).setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 650, y: 160, width: 500, height: 500))
+        }
         selectedNoteID = preview.notes.first?.id
         syncState = .saved(.now)
     }

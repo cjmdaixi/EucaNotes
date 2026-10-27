@@ -213,6 +213,7 @@ private struct MonthCard: View {
             .foregroundStyle(.white)
             .padding(26)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 30).stroke(.white.opacity(0.22), lineWidth: 1))
         .shadow(color: .black.opacity(0.14), radius: 22, y: 10)
@@ -228,12 +229,16 @@ private struct MonthCard: View {
     }
 
     @ViewBuilder private var background: some View {
-        if let info, let data = store.diaryImages[info.id], let image = UIImage(data: data) {
-            Image(uiImage: image).resizable().scaledToFill()
-        } else {
-            Color(uiColor: .systemGray4)
+        Group {
+            if let info, let data = store.diaryImages[info.id], let image = UIImage(data: data) {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Color(uiColor: .systemGray4)
+            }
         }
-    }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .clipped()
+}
 }
 
 private struct DiaryListView: View {
