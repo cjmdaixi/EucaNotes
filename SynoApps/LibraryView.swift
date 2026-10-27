@@ -18,7 +18,7 @@ struct LibraryView: View {
                     DiaryProfileView(path: $path)
                 }
             }
-            .padding(.bottom, section == .cards ? 126 : 0)
+            .padding(.bottom, path.isEmpty ? (section == .cards ? 126 : 0) : 0)
             .navigationDestination(for: DiaryRoute.self) { route in
                 switch route {
                 case .month(let id): DiaryListView(monthID: id, path: $path)
@@ -27,7 +27,9 @@ struct LibraryView: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                HomeBottomBar(section: $section, showCalendar: $showCalendar, isCreating: isCreating, createAction: createDiary)
+                if path.isEmpty {
+                    HomeBottomBar(section: $section, showCalendar: $showCalendar, isCreating: isCreating, createAction: createDiary)
+                }
             }
         }
         .background(AppTheme.paper.ignoresSafeArea())

@@ -193,37 +193,48 @@ struct NoteEditorView: View {
     }
 
     private func diaryEditor(_ note: Note) -> some View {
-        VStack(spacing: 0) {
-            DiaryPhotoHeader(note: note)
-            TextField("标题", text: Binding(
-                get: { note.diaryMetadata.headline },
-                set: { value in
-                    var metadata = note.diaryMetadata
-                    metadata.headline = value
-                    store.updateDiaryMetadata(id: noteID, metadata: metadata)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    DiaryPhotoHeader(note: note)
+                    TextField("标题", text: Binding(
+                        get: { note.diaryMetadata.headline },
+                        set: { value in
+                            var metadata = note.diaryMetadata
+                            metadata.headline = value
+                            store.updateDiaryMetadata(id: noteID, metadata: metadata)
+                        }
+                    ), axis: .vertical)
+                        .font(.title2.bold())
+                        .multilineTextAlignment(.center)
+                        .lineLimit(1...3)
+                        .padding(.horizontal, 28)
+                        .padding(.vertical, 20)
+                        .disabled(note.isInTrash)
+                        .accessibilityIdentifier("diary-headline-field")
+                    DiaryMetadataBar(metadata: note.diaryMetadata) { section in
+                        diaryMetadataSection = section
+                        showDiaryMetadata = true
+                    }
+                    if store.loadingNoteIDs.contains(noteID) {
+                        ProgressView("正在载入日记…")
+                            .frame(maxWidth: .infinity, minHeight: 320)
+                    } else {
+                        RichTextEditor(noteID: noteID, content: note.content, bridge: bridge) { html in
+                            guard html != store.note(id: noteID)?.content else { return }
+                            store.updateNote(id: noteID, content: html)
+                            scheduleSave()
+                        }
+                        .disabled(note.isInTrash)
+                        .frame(minHeight: 320)
+                        .id("diary-body")
+                    }
                 }
-            ), axis: .vertical)
-                .font(.title2.bold())
-                .multilineTextAlignment(.center)
-                .lineLimit(1...3)
-                .padding(.horizontal, 28)
-                .padding(.vertical, 20)
-                .disabled(note.isInTrash)
-                .accessibilityIdentifier("diary-headline-field")
-            DiaryMetadataBar(metadata: note.diaryMetadata) { section in
-                diaryMetadataSection = section
-                showDiaryMetadata = true
             }
-            if store.loadingNoteIDs.contains(noteID) {
-                ProgressView("正在载入日记…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                RichTextEditor(noteID: noteID, content: note.content, bridge: bridge) { html in
-                    guard html != store.note(id: noteID)?.content else { return }
-                    store.updateNote(id: noteID, content: html)
-                    scheduleSave()
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                withAnimation(.easeOut(duration: 0.22)) {
+                    proxy.scrollTo("diary-body", anchor: .top)
                 }
-                .disabled(note.isInTrash)
             }
         }
     }

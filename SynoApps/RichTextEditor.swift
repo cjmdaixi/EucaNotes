@@ -25,6 +25,7 @@ struct RichTextEditor: UIViewRepresentable {
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.contentInsetAdjustmentBehavior = .automatic
         webView.scrollView.keyboardDismissMode = .interactive
+        webView.isAccessibilityElement = true
         webView.accessibilityLabel = "笔记正文编辑器"
         webView.accessibilityIdentifier = "note-body-editor"
         context.coordinator.webView = webView
