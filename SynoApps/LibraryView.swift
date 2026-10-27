@@ -18,7 +18,7 @@ struct LibraryView: View {
                     DiaryProfileView(path: $path)
                 }
             }
-            .padding(.bottom, 126)
+            .padding(.bottom, section == .cards ? 126 : 0)
             .navigationDestination(for: DiaryRoute.self) { route in
                 switch route {
                 case .month(let id): DiaryListView(monthID: id, path: $path)
