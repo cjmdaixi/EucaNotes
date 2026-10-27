@@ -194,12 +194,18 @@ private struct MonthCarouselView: UIViewRepresentable {
 
     func updateUIView(_ collectionView: UICollectionView, context: Context) {
         context.coordinator.parent = self
+        let itemSize = CGSize(width: cardWidth, height: cardHeight)
         if let layout = collectionView.collectionViewLayout as? UICollectionViewFlowLayout {
-            layout.itemSize = CGSize(width: cardWidth, height: cardHeight)
-            let inset = max(0, (collectionView.bounds.width - cardWidth) / 2)
-            layout.sectionInset = UIEdgeInsets(top: 0, left: inset, bottom: 0, right: inset)
+            let inset = max(0, (collectionView.bounds.width - itemSize.width) / 2)
+            let sectionInset = UIEdgeInsets(top: 0, left: inset, bottom: 0, right: inset)
+            if layout.itemSize != itemSize || layout.sectionInset != sectionInset {
+                layout.itemSize = itemSize
+                layout.sectionInset = sectionInset
+                layout.invalidateLayout()
+            }
         }
-        context.coordinator.update(collectionView)
+        collectionView.layoutIfNeeded()
+        context.coordinator.update(collectionView, cardSize: itemSize)
     }
 
     @MainActor
@@ -207,6 +213,7 @@ private struct MonthCarouselView: UIViewRepresentable {
         var parent: MonthCarouselView
         private var monthIDs: [String] = []
         private var contentRevision: [Date] = []
+        private var cardSize: CGSize = .zero
         private var dragStartIndex = 0
         private var lastSelected: String?
         private var needsInitialScroll = true
@@ -216,13 +223,27 @@ private struct MonthCarouselView: UIViewRepresentable {
             self.lastSelected = parent.selectedMonthID
         }
 
-        func update(_ collectionView: UICollectionView) {
+        func update(_ collectionView: UICollectionView, cardSize size: CGSize) {
             let ids = parent.months.map(\.id)
-            if ids != monthIDs || contentRevision != parent.contentRevision {
-                needsInitialScroll = ids != monthIDs || needsInitialScroll
+            if ids != monthIDs || contentRevision != parent.contentRevision || size != cardSize {
+                needsInitialScroll = ids != monthIDs || size != cardSize || needsInitialScroll
                 monthIDs = ids
                 contentRevision = parent.contentRevision
+                cardSize = size
                 collectionView.reloadData()
+            }
+            for case let cell as MonthHostingCell in collectionView.visibleCells {
+                guard let indexPath = collectionView.indexPath(for: cell), parent.months.indices.contains(indexPath.item) else { continue }
+                let month = parent.months[indexPath.item]
+                cell.configure(
+                    month: month,
+                    size: cardSize,
+                    count: parent.store.diaryNotes(monthID: month.id).count,
+                    info: parent.store.infoNote(monthID: month.id),
+                    showCalendar: parent.showCalendar,
+                    path: parent.$path,
+                    store: parent.store
+                )
             }
             if needsInitialScroll || lastSelected != parent.selectedMonthID {
                 needsInitialScroll = false
@@ -241,6 +262,7 @@ private struct MonthCarouselView: UIViewRepresentable {
             let month = parent.months[indexPath.item]
             cell.configure(
                 month: month,
+                size: cardSize,
                 count: parent.store.diaryNotes(monthID: month.id).count,
                 info: parent.store.infoNote(monthID: month.id),
                 showCalendar: parent.showCalendar,
@@ -260,15 +282,15 @@ private struct MonthCarouselView: UIViewRepresentable {
         }
 
         func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
-            let step = parent.cardWidth + 18
+            let step = cardSize.width + 18
             let startX = CGFloat(dragStartIndex) * step
             let delta = scrollView.contentOffset.x - startX
-            let peek = max(0, (scrollView.bounds.width - parent.cardWidth) / 2)
+            let peek = max(0, (scrollView.bounds.width - cardSize.width) / 2)
             let visibleWidth = peek + abs(delta)
             var targetIndex = dragStartIndex
-            if visibleWidth > parent.cardWidth * 2 / 3 {
+            if visibleWidth > cardSize.width * 2 / 3 {
                 let direction = delta > 0 ? 1 : -1
-                let steps = max(1, Int(visibleWidth / parent.cardWidth))
+                let steps = max(1, Int(visibleWidth / cardSize.width))
                 targetIndex = min(max(0, dragStartIndex + direction * steps), parent.months.count - 1)
             }
             targetContentOffset.pointee.x = CGFloat(targetIndex) * step
@@ -291,13 +313,13 @@ private struct MonthCarouselView: UIViewRepresentable {
                   let index = parent.months.firstIndex(where: { $0.id == id }) else { return }
             lastSelected = id
             collectionView.layoutIfNeeded()
-            let offset = CGPoint(x: CGFloat(index) * (parent.cardWidth + 18), y: 0)
+            let offset = CGPoint(x: CGFloat(index) * (cardSize.width + 18), y: 0)
             collectionView.setContentOffset(offset, animated: animated)
         }
 
         private func nearestIndex(_ scrollView: UIScrollView) -> Int {
             guard !parent.months.isEmpty else { return 0 }
-            let step = parent.cardWidth + 18
+            let step = cardSize.width + 18
             return min(max(0, Int((scrollView.contentOffset.x / step).rounded())), parent.months.count - 1)
         }
 
@@ -334,7 +356,7 @@ private final class MonthHostingCell: UICollectionViewCell {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     @MainActor
-    func configure(month: DiaryMonth, count: Int, info _: Note?, showCalendar: Bool, path: Binding<[DiaryRoute]>, store: LibraryStore) {
+    func configure(month: DiaryMonth, size: CGSize, count: Int, info _: Note?, showCalendar: Bool, path: Binding<[DiaryRoute]>, store: LibraryStore) {
         let content = Group {
             if showCalendar {
                 MonthCalendarCard(month: month, path: path)
@@ -343,6 +365,7 @@ private final class MonthHostingCell: UICollectionViewCell {
             }
         }
         .environment(store)
+        .frame(width: size.width, height: size.height)
         host?.rootView = AnyView(content)
     }
 }
