@@ -55,7 +55,11 @@ struct DiaryPhotoHeader: View {
                           let jpeg = DiaryImageCompression.jpegData(from: data) else { continue }
                     images.append(jpeg)
                 }
-                guard !images.isEmpty else { return }
+                guard !images.isEmpty else {
+                    store.errorMessage = "无法读取所选照片，请重新选择或先下载到本机。"
+                    store.showError = true
+                    return
+                }
                 await store.addPhotos(id: note.id, images: images)
             }
         }

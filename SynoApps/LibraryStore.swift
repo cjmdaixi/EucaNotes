@@ -479,7 +479,7 @@ final class LibraryStore {
             } else {
                 diarySaveTasks[id]?.cancel()
                 await saveNote(id: id)
-                guard editRevisions[id] == nil, var current = self.note(id: id) else { return }
+                guard var current = self.note(id: id) else { return }
                 for jpegData in images {
                     current = try await api.addPhoto(to: current, jpegData: jpegData, session: session)
                     replace(current)
