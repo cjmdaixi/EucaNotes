@@ -115,7 +115,7 @@ private struct MonthCardsView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: 18) {
                             ForEach(months) { month in
-                                Group {
+                                ZStack {
                                     if showCalendar {
                                         MonthCalendarCard(month: month, path: $path)
                                     } else {
@@ -123,6 +123,7 @@ private struct MonthCardsView: View {
                                     }
                                 }
                                 .frame(width: cardWidth, height: cardHeight)
+                                .clipped()
                                 .scrollTransition(.interactive) { content, phase in
                                     content.opacity(phase.isIdentity ? 1 : 0.48)
                                 }
