@@ -45,6 +45,13 @@ extension DiaryText {
         return html + "\n" + comment
     }
 
+    static func preservingMetadata(in html: String, with newContent: String) -> String {
+        guard let marker = html.range(of: "<!-- \(metadataMarker)"),
+              let end = html[marker.upperBound...].range(of: " -->") else { return newContent }
+        let comment = String(html[marker.lowerBound..<end.upperBound])
+        return contentWithoutMetadata(in: newContent) + "\n" + comment
+    }
+
     static func hasMetadata(in html: String) -> Bool {
         guard let marker = html.range(of: "<!-- \(metadataMarker)") else { return false }
         return html[marker.upperBound...].range(of: " -->") != nil

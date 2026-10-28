@@ -158,15 +158,18 @@ nonisolated struct SynologyAPI: Sendable {
         return Notebook(json: object)
     }
 
-    func attachmentDownloadURL(noteID: String, fileID: String, session: SynologySession) -> String? {
+    func attachmentDownloadURL(noteID: String, fileID: String, noteVersion: String, session: SynologySession) -> String? {
         var components = URLComponents(string: session.baseURL + "/webapi/entry.cgi")
-        components?.queryItems = [
+        var query = [
             URLQueryItem(name: "api", value: "SYNO.NoteStation.Note"),
-            URLQueryItem(name: "version", value: "4"),
+            URLQueryItem(name: "version", value: "3"),
             URLQueryItem(name: "method", value: "download"),
             URLQueryItem(name: "object_id", value: noteID),
-            URLQueryItem(name: "file_id", value: fileID)
+            URLQueryItem(name: "file_id", value: fileID),
+            URLQueryItem(name: "format", value: "raw")
         ]
+        if !noteVersion.isEmpty { query.append(URLQueryItem(name: "ver", value: noteVersion)) }
+        components?.queryItems = query
         return components?.string
     }
 
@@ -197,9 +200,8 @@ nonisolated struct SynologyAPI: Sendable {
     func addPhoto(to note: Note, jpegData: Data, session: SynologySession) async throws -> Note {
         let reference = Data(UUID().uuidString.utf8).base64EncodedString()
         let fieldName = "photo_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
-        let embedded = "data:image/jpeg;base64," + jpegData.base64EncodedString()
         var metadata = note.diaryMetadata
-        metadata.photos.append(embedded)
+        metadata.photos.append("attachment://\(reference)")
         let html = try DiaryText.updatingMetadata(in: note.content, metadata: metadata)
         let fields: [String: JSONValue] = [
             "object_id": .string(note.id),

@@ -212,7 +212,7 @@ struct Note: Identifiable, Codable, Hashable, Sendable {
     }
 
     var preview: String {
-        let source = brief.isEmpty ? content : brief
+        let source = DiaryText.contentWithoutMetadata(in: brief.isEmpty ? content : brief)
         let withoutTags = source.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
         return withoutTags
             .replacingOccurrences(of: "&nbsp;", with: " ")

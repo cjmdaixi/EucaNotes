@@ -186,13 +186,14 @@ final class LibraryStore {
 
     func loadDiaryPhotos(noteID: String) async {
         if note(id: noteID)?.hasLoadedContent == false { await loadNote(id: noteID) }
-        guard let session, let sources = note(id: noteID)?.diaryMetadata.photos, !sources.isEmpty else {
+        guard let session, let note = note(id: noteID), !note.diaryMetadata.photos.isEmpty else {
             await loadDiaryImage(noteID: noteID)
             return
         }
-        for (index, source) in sources.enumerated() {
+        for (index, photoSource) in note.diaryMetadata.photos.enumerated() {
             let key = "\(noteID)#photo#\(index)"
             guard diaryImages[key] == nil, !loadingDiaryImageIDs.contains(key) else { continue }
+            guard let source = resolvedPhotoSource(photoSource, note: note, session: session) else { continue }
             loadingDiaryImageIDs.insert(key)
             do {
                 let data = try await api.imageData(source: source, session: session)
@@ -203,6 +204,13 @@ final class LibraryStore {
             }
             loadingDiaryImageIDs.remove(key)
         }
+    }
+
+    private func resolvedPhotoSource(_ source: String, note: Note, session: SynologySession) -> String? {
+        guard source.hasPrefix("attachment://") else { return source }
+        let reference = String(source.dropFirst("attachment://".count))
+        guard let fileID = note.attachmentRefs[reference] else { return nil }
+        return api.attachmentDownloadURL(noteID: note.id, fileID: fileID, noteVersion: note.version, session: session)
     }
 
     func migrateDiaryPhotos(noteID: String) {
@@ -222,8 +230,9 @@ final class LibraryStore {
         defer { loadingDiaryImageIDs.remove(noteID) }
         if note(id: noteID)?.hasLoadedContent == false { await loadNote(id: noteID) }
         guard let session, let note = note(id: noteID) else { return }
-        let source = note.diaryMetadata.photos.first ?? DiaryText.imageSource(in: note.content, after: backgroundOnly ? "背景照片：" : nil)
-        guard let source, !source.isEmpty else { return }
+        let photoSource = note.diaryMetadata.photos.first ?? DiaryText.imageSource(in: note.content, after: backgroundOnly ? "背景照片：" : nil)
+        guard let photoSource, !photoSource.isEmpty,
+              let source = resolvedPhotoSource(photoSource, note: note, session: session) else { return }
         do {
             diaryImages[noteID] = try await api.imageData(source: source, session: session)
         } catch {
@@ -257,7 +266,7 @@ final class LibraryStore {
         if let content {
             let existing = notes[index].content
             if DiaryText.hasMetadata(in: existing) {
-                notes[index].content = (try? DiaryText.updatingMetadata(in: content, metadata: DiaryText.metadata(in: existing))) ?? content
+                notes[index].content = DiaryText.preservingMetadata(in: existing, with: content)
             } else {
                 notes[index].content = content
             }
