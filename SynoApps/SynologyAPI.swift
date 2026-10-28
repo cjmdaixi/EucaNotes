@@ -65,18 +65,20 @@ nonisolated struct SynologyAPI: Sendable {
         return SynologySession(baseURL: baseURL, sid: sid, did: data["did"]?.stringValue ?? deviceID, account: account)
     }
 
-    func fetchLibrary(session: SynologySession) async throws -> LibraryPayload {
+    func fetchLibrary(session: SynologySession, incremental: Bool = false) async throws -> LibraryPayload {
         async let notebooksData = request(session: session, api: "SYNO.NoteStation.Notebook", version: 2, method: "list")
-        // Full-library synchronization must use Note v2 without fast_result.
-        // The v3 fast_result path is only an incremental supplement to the
-        // official desktop client's existing offline database; by itself it
-        // can return a small, predominantly recycled subset of the library.
+        // A complete v2 snapshot is required once. Subsequent launches use the
+        // same fast-result supplement as the official client's offline database
+        // and merge only changed notes into the local cache.
         async let notesData = request(
             session: session,
             api: "SYNO.NoteStation.Note",
-            version: 2,
+            version: incremental ? 3 : 2,
             method: "list",
-            params: [
+            params: incremental ? [
+                "filter": .object(["fast_result": .bool(true)]),
+                "field": .object(["commit_msg": .bool(true)])
+            ] : [
                 "sort_by": .string("mtime"),
                 "sort_direction": .string("desc"),
                 "limit": .number(1000)

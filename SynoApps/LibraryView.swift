@@ -202,11 +202,19 @@ private struct MonthCarouselView: UIViewRepresentable {
         context.coordinator.parent = self
         let itemSize = CGSize(width: cardWidth, height: cardHeight)
         if let layout = collectionView.collectionViewLayout as? UICollectionViewFlowLayout {
-            let inset = max(0, (collectionView.bounds.width - itemSize.width) / 2)
-            let sectionInset = UIEdgeInsets(top: 0, left: inset, bottom: 0, right: inset)
-            if layout.itemSize != itemSize || layout.sectionInset != sectionInset {
+            // During the first SwiftUI pass the collection view can still have
+            // zero width. Do not replace the correct screen-based initial inset
+            // with zero, otherwise the first card launches flush to the left.
+            if collectionView.bounds.width > 0 {
+                let inset = max(0, (collectionView.bounds.width - itemSize.width) / 2)
+                let sectionInset = UIEdgeInsets(top: 0, left: inset, bottom: 0, right: inset)
+                if layout.itemSize != itemSize || layout.sectionInset != sectionInset {
+                    layout.itemSize = itemSize
+                    layout.sectionInset = sectionInset
+                    layout.invalidateLayout()
+                }
+            } else if layout.itemSize != itemSize {
                 layout.itemSize = itemSize
-                layout.sectionInset = sectionInset
                 layout.invalidateLayout()
             }
         }
@@ -320,8 +328,9 @@ private struct MonthCarouselView: UIViewRepresentable {
                   let index = parent.months.firstIndex(where: { $0.id == id }) else { return }
             lastSelected = id
             collectionView.layoutIfNeeded()
-            let offset = CGPoint(x: CGFloat(index) * (cardSize.width + 18), y: 0)
-            collectionView.setContentOffset(offset, animated: animated)
+            // UIKit accounts for the current flow-layout insets and bounds.
+            // A manual offset can be calculated against an earlier launch layout.
+            collectionView.scrollToItem(at: IndexPath(item: index, section: 0), at: .centeredHorizontally, animated: animated)
         }
 
         private func nearestIndex(_ scrollView: UIScrollView) -> Int {

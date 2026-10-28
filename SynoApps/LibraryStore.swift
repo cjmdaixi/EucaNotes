@@ -129,16 +129,23 @@ final class LibraryStore {
         syncState = .syncing
         defer { isSyncing = false }
         do {
-            let payload = try await api.fetchLibrary(session: session)
+            // Cached notes make startup immediately useful and form the local
+            // snapshot required by Note Station's incremental fast-result list.
+            let incremental = !notes.isEmpty
+            let payload = try await api.fetchLibrary(session: session, incremental: incremental)
             guard generation == syncGeneration else { return }
-            // Keep a locally edited version while its save request is in flight.
-            var merged = payload.notes
-            for (index, remote) in merged.enumerated() {
-                if let local = notes.first(where: { $0.id == remote.id }), syncState == .syncing, editRevisions[remote.id] != nil {
-                    merged[index] = local
+            if incremental {
+                applyIncremental(payload)
+            } else {
+                // Keep a locally edited version while its save request is in flight.
+                var merged = payload.notes
+                for (index, remote) in merged.enumerated() {
+                    if let local = notes.first(where: { $0.id == remote.id }), syncState == .syncing, editRevisions[remote.id] != nil {
+                        merged[index] = local
+                    }
                 }
+                apply(LibraryPayload(notebooks: payload.notebooks, notes: merged, tags: payload.tags))
             }
-            apply(LibraryPayload(notebooks: payload.notebooks, notes: merged, tags: payload.tags))
             try await ensureDiaryLibrary(session: session)
             syncState = .saved(.now)
         } catch SynologyError.api(_, 105), SynologyError.api(_, 119) {
@@ -593,6 +600,22 @@ final class LibraryStore {
         notebooks = payload.notebooks.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         notes = payload.notes
         tags = payload.tags.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        persistCache()
+    }
+
+    private func applyIncremental(_ payload: LibraryPayload) {
+        notebooks = payload.notebooks.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        tags = payload.tags.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        var merged = notes
+        for remote in payload.notes {
+            if let index = merged.firstIndex(where: { $0.id == remote.id }) {
+                // Never replace a newer local edit with an in-flight sync result.
+                if editRevisions[remote.id] == nil { merged[index] = remote }
+            } else {
+                merged.append(remote)
+            }
+        }
+        notes = merged
         persistCache()
     }
 
