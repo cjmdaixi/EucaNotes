@@ -43,8 +43,11 @@ struct RichTextEditor: UIViewRepresentable {
         if context.coordinator.noteID != noteID {
             context.coordinator.noteID = noteID
             context.coordinator.setHTML(renderedContent)
-        } else if context.coordinator.currentHTML != renderedContent, !context.coordinator.isEditing {
-            context.coordinator.setHTML(renderedContent)
+        } else if !context.coordinator.isDocumentReady {
+            // Keep the newest remotely loaded content until the initial page
+            // finishes. Afterwards the contenteditable DOM owns the selection;
+            // writing the same SwiftUI state back would move the caret.
+            context.coordinator.pendingHTML = renderedContent
         }
     }
 
@@ -61,6 +64,7 @@ struct RichTextEditor: UIViewRepresentable {
         var pendingHTML: String
         var currentHTML = ""
         var isEditing = false
+        var isDocumentReady = false
 
         init(_ parent: RichTextEditor) {
             self.parent = parent
@@ -71,6 +75,7 @@ struct RichTextEditor: UIViewRepresentable {
         var bridge: RichTextEditorBridge { parent.bridge }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            isDocumentReady = true
             setHTML(pendingHTML)
         }
 
